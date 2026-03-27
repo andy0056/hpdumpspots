@@ -159,7 +159,10 @@ function normLocation(str) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/* looksLikeAbbr removed — no longer needed with district dropdown */
+function looksLikeAbbr(str) {
+  const s = (str || "").trim();
+  return /^[A-Z0-9&-]{2,5}$/.test(s);
+}
 
 let reports = [],
   map,
@@ -218,7 +221,10 @@ async function fetchReports() {
         .map((p) => p.url),
     }));
   } catch (e) {
-    toast("Could not load reports. Check your connection.", true);
+    toast(
+      "Could not load reports. Check Supabase tables, credentials, and connection.",
+      true,
+    );
     reports = [];
   }
   setFeedLoading(false);
@@ -1006,7 +1012,11 @@ async function submitReport() {
     window._lastReportSpecific = specific;
     window._lastReportDistrict = district;
   } catch (e) {
-    toast("Submit failed: " + (e.message || "unknown error"), true);
+    const hint =
+      e && String(e.message || "").includes("404")
+        ? " Check that reports and report_photos exist in Supabase."
+        : "";
+    toast("Submit failed: " + (e.message || "unknown error") + hint, true);
     btn.textContent = "Submit Report";
     btn.disabled = false;
   }
