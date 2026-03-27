@@ -2,9 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DumpSpot</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Playfair+Display:ital,wght@1,700;1,900&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Report illegal dump spots across Himachal Pradesh. No login needed — just pin it on the map. Keep Devbhoomi clean.">
+<title>DumpSpot HP — Keep Devbhoomi Clean</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700;1,900&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 <link rel="stylesheet" href="style.css">
@@ -12,24 +15,23 @@
 </head>
 <body>
 
-</head>
-<body>
-
 <nav>
   <div class="nlogo" onclick="goPage('pg-feed');setView('map')">
-    <div class="nlogo-t">DumpSpot</div>
-    <div class="nlogo-s">post your dump here</div>
+    <div class="nlogo-t"><span class="brand-one">One</span><span class="brand-himachal">Himachal</span></div>
+    <div class="nlogo-s">DumpSpot · community reporting</div>
   </div>
-  <div class="ntabs">
+  <div class="ntabs ntabs-desktop">
     <button class="ntab on" id="ntab-feed"   onclick="goPage('pg-feed');setView('map')">Feed</button>
     <button class="ntab"    id="ntab-report" onclick="goPage('pg-report')">+ Report</button>
+    <button class="ntab"    id="ntab-karma"  onclick="goPage('pg-karma')">Karma</button>
   </div>
+  <button class="lang-btn" id="lang-toggle" onclick="toggleLang()">हिंदी</button>
 </nav>
 
 <div id="pg-feed" class="pg on">
   <div class="toolbar">
     <span class="fl">Filter</span>
-    <select class="fsel" id="fs-state" onchange="applyFilters()"><option value="">All states</option></select>
+    <select class="fsel" id="fs-district" onchange="applyFilters()"><option value="">All districts</option></select>
     <select class="fsel" id="fs-area"  onchange="applyFilters()"><option value="">All areas</option></select>
     <select class="fsel" id="fs-cat"   onchange="applyFilters()"><option value="">All categories</option></select>
     <div class="vtog">
@@ -52,6 +54,7 @@
       Back to feed
     </button>
     <div id="det-content"></div>
+    <div id="det-upvote-wrap"></div>
     <div id="det-mini-map" style="display:none;margin-top:1.2rem;"></div>
   </div>
 </div>
@@ -69,26 +72,42 @@
           <label class="fl-label">Your name <span class="req">*</span></label>
           <input type="text" id="rname" placeholder="What to call you" maxlength="60">
 
-          <label class="fl-label">State <span class="req">*</span> &amp; Area <span class="req">*</span></label>
+          <label class="fl-label">District <span class="req">*</span> &amp; Area <span class="req">*</span></label>
           <div class="r2">
-            <input type="text" id="rstate" placeholder="State" maxlength="50" onblur="validateLocationField(this.value,'state')">
-            <input type="text" id="rarea"  placeholder="District / Area" maxlength="60" onblur="validateLocationField(this.value,'area')">
+            <select id="rdistrict" class="form-select">
+              <option value="">Select district</option>
+            </select>
+            <input type="text" id="rarea"  placeholder="Town / Area / Locality" maxlength="60">
           </div>
 
-          <label class="fl-label">Specific location <span class="req">*</span></label>
+          <label class="fl-label">Specific location <span class="opt">optional</span></label>
           <div class="loc-search-wrap">
-            <input type="text" id="rspec" placeholder="Search or type your location" maxlength="200" autocomplete="off" oninput="onLocInput(this.value)">
+            <input type="text" id="rspec" placeholder="e.g. Behind the old Shiv temple" maxlength="200" autocomplete="off" oninput="onLocInput(this.value)">
             <div class="loc-results" id="loc-results"></div>
           </div>
+          
+          <div class="loc-link-wrap" style="margin-top:0.6rem;">
+            <input type="text" id="gmaps-link" class="form-input" placeholder="Paste a Google Maps link (Optional)" maxlength="300" style="padding-left:2rem;">
+            <svg style="position:absolute;left:.6rem;top:50%;transform:translateY(-50%);width:14px;height:14px;fill:none;stroke:var(--mu);stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          </div>
+          
+          <div style="font-family:var(--fm);font-size:.55rem;color:var(--mu);margin-top:.45rem;line-height:1.4;">
+            Can't find the exact spot on the map? Just describe it above or paste a link.
+          </div>
+
+          <button class="loc-gps-btn" onclick="useMyLocation()" style="margin-top:0.8rem;">
+            <svg viewBox="0 0 24 24" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" fill="none"/></svg>
+            📍 Use my current location
+          </button>
           <button class="loc-maps-btn" onclick="openGoogleMaps()">
             <svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-            Open in Google Maps instead
+            Or find on Google Maps
           </button>
           <div id="pin-confirm-wrap" style="display:none;margin-top:.75rem;">
-            <div class="fl-label" style="margin-bottom:.35rem;color:#6a9a8a;">Drag the pin to exact location <span style="color:var(--fa);font-size:.5rem;">· tap map to move</span></div>
+            <div class="fl-label" style="margin-bottom:.35rem;color:var(--gn);">Drag the pin to exact location <span style="color:var(--mu);font-size:.5rem;">· tap map to move</span></div>
             <div id="pin-confirm-map" style="width:100%;height:200px;border-radius:6px;overflow:hidden;border:1px solid var(--b2);"></div>
             <div id="pin-digipin" style="font-family:var(--fm);font-size:.55rem;color:var(--mu);margin-top:.35rem;letter-spacing:.5px;"></div>
-            <div id="pin-revgeo" style="font-family:var(--fm);font-size:.6rem;color:#6a9a8a;margin-top:.3rem;min-height:1rem;"></div>
+            <div id="pin-revgeo" style="font-family:var(--fm);font-size:.6rem;color:var(--gn);margin-top:.3rem;min-height:1rem;"></div>
           </div>
 
         </div>
@@ -101,11 +120,13 @@
             <div class="tag" data-g="type">Footpath</div>
             <div class="tag" data-g="type">Nala / Drain</div>
             <div class="tag" data-g="type">Open plot</div>
-            <div class="tag" data-g="type">Park</div>
+            <div class="tag" data-g="type">Near temple</div>
+            <div class="tag" data-g="type">Tourist spot</div>
+            <div class="tag" data-g="type">River / Nala bank</div>
+            <div class="tag" data-g="type">Forest area</div>
             <div class="tag" data-g="type">Market</div>
             <div class="tag" data-g="type">Near school</div>
             <div class="tag" data-g="type">Near hospital</div>
-            <div class="tag" data-g="type">Road encroachment</div>
           </div>
 
           <label class="fl-label fl-sev" style="margin-top:1.3rem;">Severity <span class="opt">optional</span></label>
@@ -134,11 +155,11 @@
           <div class="rp-divider"></div>
           <label class="fl-label">Photos <span class="req">*</span></label>
           <div class="uparea" id="uparea">
-            <input type="file" id="photo-input" accept="image/*" multiple>
+            <input type="file" id="photo-input" accept="image/*" multiple capture="environment">
             <div class="uparea-ico">
               <svg viewBox="0 0 24 24" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
             </div>
-            <p>Tap or drag photos here</p>
+            <p>Tap to add photos</p>
             <small>1 to 6 · JPG PNG WEBP</small>
           </div>
           <div id="pgrid" class="pgrid" style="display:none;"></div>
@@ -154,10 +175,34 @@
     <div class="succ" id="succ">
       <svg style="width:44px;height:44px;margin-bottom:1rem;opacity:.42;" viewBox="0 0 24 24" fill="none" stroke="var(--pk)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
       <h2>Pinned.</h2>
-      <p>Your report is live on the map.<br>Share DumpSpot — more eyes, more pressure.</p>
+      <p>Your report is live on the map.<br>Keep Devbhoomi clean — share it.</p>
+      <div class="succ-karma" id="succ-karma"></div>
       <div class="succ-id" id="succ-id"></div>
-      <button class="ragain" onclick="resetForm()">Report another spot</button>
+      <div class="succ-actions">
+        <button class="share-wa-btn" id="share-wa-btn" onclick="shareOnWhatsApp()">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          Share on WhatsApp
+        </button>
+        <button class="ragain" onclick="resetForm()">Report another spot</button>
+      </div>
     </div>
+  </div>
+</div>
+
+<div id="pg-karma" class="pg">
+  <div class="rp-outer karma-outer">
+    <div class="karma-header">
+      <div class="karma-points-wrap">
+        <div class="karma-points-num" id="karma-points">0</div>
+        <div class="karma-points-label">karma points</div>
+      </div>
+      <div class="karma-name" id="karma-name"></div>
+      <div class="karma-subtitle">Your quiet impact on Devbhoomi</div>
+    </div>
+    <div class="karma-milestone-title">Milestones</div>
+    <div class="karma-milestones" id="karma-milestones"></div>
+    <div class="karma-log-title">Recent Activity</div>
+    <div class="karma-log" id="karma-log"></div>
   </div>
 </div>
 
@@ -174,5 +219,20 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script src="app.js"></script>
+
+<div class="bottom-nav" id="bottom-nav">
+  <button class="bnav-btn on" id="bnav-feed" onclick="goPage('pg-feed');setView('map')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+    <span>Feed</span>
+  </button>
+  <button class="bnav-btn" id="bnav-report" onclick="goPage('pg-report')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+    <span>Report</span>
+  </button>
+  <button class="bnav-btn" id="bnav-karma" onclick="goPage('pg-karma')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+    <span>Karma</span>
+  </button>
+</div>
 </body>
 </html>

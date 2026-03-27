@@ -75,14 +75,14 @@ No accounts. No bureaucracy. Just evidence.
 
 ## How it's built
 
-No framework. No build step. Three files that run directly in a browser.
+No framework. No frontend bundler. The only build step is a tiny config generator.
 
 - `index.html` — all markup, page structure, script imports
 - `style.css` — all styles, design tokens, layout, components
 - `app.js` — all logic: map, list, form, upload, submit, spam checks, location encoding
 - `config.js` — credentials only, gitignored, never pushed
 - `build.js` — Node script run at deploy time, generates `config.js` from env vars
-- `netlify.toml` — one line: `node build.js`
+- `vercel.json` — tells Vercel to run `node build.js` and serve the repo root
 - `favicon.svg` — fairy with a trash bag
 
 Everything loads from CDN. No npm, no bundler, no local install required.
@@ -92,24 +92,26 @@ Everything loads from CDN. No npm, no bundler, no local install required.
 ## Running locally
 
 ```bash
+node build.js
 python3 -m http.server 8080
 # or
 npx serve .
 ```
 
 Open `http://localhost:8080`. Make sure `config.js` has your real credentials.
+If you keep your Supabase values in `.env.local`, `node build.js` will read them and generate `config.js` for you.
 
 ---
 
 ## Deploying
 
-1. Push `index.html`, `style.css`, `app.js`, `build.js`, `netlify.toml`, `favicon.svg` to GitHub
-2. Connect repo to Netlify
-3. Set environment variables in Netlify → Site settings → Environment variables:
-   - `DB_URL` — your database project URL
-   - `DB_KEY` — your publishable API key
-   - `LOCK_INSPECT_ENV` — `true` (disables devtools on production)
-4. Deploy — Netlify runs `node build.js`, generates `config.js`, serves the site
+1. Push `index.html`, `style.css`, `app.js`, `build.js`, `vercel.json`, `favicon.svg` to GitHub
+2. Connect the repo to Vercel
+3. Set environment variables in Vercel → Project Settings → Environment Variables:
+   - `DB_URL` or `NEXT_PUBLIC_SUPABASE_URL` — your database project URL
+   - `DB_KEY` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` — your public Supabase key
+   - `LOCK_INSPECT_ENV` — `true` if you want the devtools lock on production
+4. Deploy — Vercel runs `node build.js`, generates `config.js`, and serves the app
 
 ---
 

@@ -18,7 +18,7 @@
 | Toast notifications | Toastify.js                           | CDN                                                          |
 | Fonts               | Google Fonts CDN                      | Playfair Display, Space Mono, DM Sans                        |
 | Backend             | Postgres + object storage             | Hosted database + S3-compatible file storage                 |
-| Hosting             | Netlify                               | Static deploy, env vars, build command                       |
+| Hosting             | Vercel                                | Static deploy, env vars, build command                       |
 
 ---
 
@@ -29,8 +29,8 @@ index.html       Page shell — nav, all page divs, script/link imports
 style.css        All styles — tokens, nav, feed, list, form, detail, components
 app.js           All logic — see breakdown below
 config.js        DB_URL, DB_KEY, LOCK_INSPECT_ENV — gitignored
-build.js         Netlify build script — writes config.js from env vars
-netlify.toml     build command: node build.js
+build.js         Deploy-time config script — writes config.js from env vars
+vercel.json      build command: node build.js, output root
 favicon.svg      SVG icon
 .gitignore       Excludes config.js
 ```
