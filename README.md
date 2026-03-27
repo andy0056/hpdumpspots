@@ -111,7 +111,8 @@ If you keep your Supabase values in `.env.local`, `node build.js` will read them
    - `DB_URL` or `NEXT_PUBLIC_SUPABASE_URL` — your database project URL
    - `DB_KEY` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` — your public Supabase key
    - `LOCK_INSPECT_ENV` — `true` if you want the devtools lock on production
-4. Deploy — Vercel runs `node build.js`, generates `config.js`, and serves the app
+4. In Supabase SQL Editor, run [supabase/setup.sql](/Users/anirudhthakur/Himachalpotholes/hpdumpspots/supabase/setup.sql) to create the required tables, policies, and storage bucket
+5. Deploy — Vercel runs `node build.js`, generates `config.js`, and serves the app
 
 ---
 

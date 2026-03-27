@@ -108,6 +108,7 @@ favicon.svg      SVG icon
 id          text PRIMARY KEY        DS-YYYYMMDD-HHMMSS-XXXX
 reporter    text NOT NULL           reporter's name (plain text, no auth)
 state       text NOT NULL           normalised via DB trigger
+district    text NOT NULL           HP district selected in the report form
 area        text NOT NULL           normalised via DB trigger
 specific    text NOT NULL           street-level location, normalised
 type        text[]                  site type tags (Road, Footpath, Market etc)
@@ -118,6 +119,7 @@ lat         float8                  decimal degrees, WGS84
 lng         float8                  decimal degrees, WGS84
 digipin     text                    India only — DigiPin code (e.g. FCJ9-REL-EEB)
 pluscode    text                    global — Plus Code (e.g. 7JVW52GR+WF)
+gmaps_link  text                    pasted or generated Google Maps URL
 ts          timestamptz             submission time, default now(), stored UTC
 ```
 
@@ -146,6 +148,7 @@ create or replace function normalize_location()
 returns trigger as $$
 begin
   new.state    := initcap(trim(new.state));
+  new.district := initcap(trim(new.district));
   new.area     := initcap(trim(new.area));
   new.specific := initcap(trim(new.specific));
   return new;
@@ -164,19 +167,20 @@ One-time cleanup for existing rows:
 update reports
 set
   state    = initcap(trim(state)),
+  district = initcap(trim(district)),
   area     = initcap(trim(area)),
   specific = initcap(trim(specific))
 where
   state    is distinct from initcap(trim(state))
+  or district is distinct from initcap(trim(district))
   or area  is distinct from initcap(trim(area))
   or specific is distinct from initcap(trim(specific));
 ```
 
-Add new columns if not present:
+Bootstrap the full schema quickly by running the contents of `supabase/setup.sql` in Supabase SQL Editor:
 
 ```sql
-alter table reports add column if not exists digipin  text;
-alter table reports add column if not exists pluscode text;
+-- See supabase/setup.sql
 ```
 
 ### Row level security
