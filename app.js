@@ -1417,7 +1417,6 @@ function checkTextSpam(name, state, area, specific, notes) {
     { label: "reporter name", val: name },
     { label: "state", val: state },
     { label: "area", val: area },
-    { label: "location", val: specific },
   ];
   for (const f of required) {
     const abuse = containsAbuse(f.val);
@@ -1427,6 +1426,14 @@ function checkTextSpam(name, state, area, specific, notes) {
     }
     if (isGibberish(f.val))
       errors.push(f.label + " does not look like a real value");
+  }
+  if (specific) {
+    const locationAbuse = containsAbuse(specific);
+    if (locationAbuse) {
+      errors.push("location contains inappropriate language");
+    } else if (isGibberish(specific)) {
+      errors.push("location does not look like a real value");
+    }
   }
   if (notes) {
     const notesAbuse = containsAbuse(notes);
