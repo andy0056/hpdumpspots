@@ -16,11 +16,35 @@
   --gn: #1B7A3D;
   --gn10: rgba(27, 122, 61, .10);
   --gn35: rgba(27, 122, 61, .35);
+  --wm: #FFF8F0;
+  --sh: 0 1px 8px rgba(0,0,0,.06);
   --r: 8px;
   --nav: 64px;
   --fd: 'Playfair Display', serif;
   --fb: 'DM Sans', sans-serif;
   --fm: 'Space Mono', monospace;
+}
+
+html[data-theme="dark"] {
+  --bg: #0E1413;
+  --s1: #141C1A;
+  --s2: #1B2522;
+  --s3: #24312D;
+  --b1: #2B3A35;
+  --b2: #395049;
+  --b3: #56756B;
+  --tx: #F4EEE4;
+  --mu: #A8B4AE;
+  --fa: #6B7D75;
+  --pk: #F06A5B;
+  --pk10: rgba(240, 106, 91, .10);
+  --pk15: rgba(240, 106, 91, .16);
+  --pk35: rgba(240, 106, 91, .32);
+  --gn: #63C084;
+  --gn10: rgba(99, 192, 132, .12);
+  --gn35: rgba(99, 192, 132, .36);
+  --wm: #161F1B;
+  --sh: 0 10px 28px rgba(0,0,0,.35);
 }
 
 *,
@@ -34,6 +58,11 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -73,7 +102,7 @@ nav {
   height: var(--nav);
   background: var(--s1);
   border-bottom: 1px solid var(--b1);
-  box-shadow: 0 1px 8px rgba(0,0,0,.06);
+  box-shadow: var(--sh);
   position: sticky;
   top: 0;
   z-index: 2000;
@@ -82,9 +111,26 @@ nav {
 
 .nlogo {
   display: flex;
+  align-items: center;
+  gap: .7rem;
+  cursor: pointer;
+}
+
+.nlogo-mark {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--wm);
+  border: 1px solid var(--b1);
+  padding: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.nlogo-copy {
+  display: flex;
   flex-direction: column;
   gap: 2px;
-  cursor: pointer;
 }
 
 .nlogo-t {
@@ -114,6 +160,12 @@ nav {
 
 .ntabs {
   display: flex;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
 }
 
 .ntab {
@@ -246,11 +298,15 @@ nav {
 }
 
 .leaflet-container {
-  background: #e8e0d8;
+  background: var(--s2);
 }
 
 .leaflet-tile {
   filter: saturate(.85) brightness(1.02);
+}
+
+html[data-theme="dark"] .leaflet-tile {
+  filter: saturate(.95) brightness(.92);
 }
 
 .leaflet-control-zoom a {
@@ -264,7 +320,7 @@ nav {
   border: 1px solid var(--b2) !important;
   border-radius: var(--r) !important;
   padding: 0 !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, .12) !important;
+  box-shadow: var(--sh) !important;
   min-width: 215px;
 }
 
@@ -283,6 +339,13 @@ nav {
   right: 9px !important;
   font-size: 16px !important;
   z-index: 10;
+}
+
+html[data-theme="dark"] .leaflet-control-attribution,
+html[data-theme="dark"] .leaflet-control-scale-line {
+  background: var(--s1) !important;
+  color: var(--mu) !important;
+  border-color: var(--b2) !important;
 }
 
 .dpin {
@@ -1847,6 +1910,14 @@ textarea {
     padding: 0 1rem;
     --nav: 50px;
   }
+  .nlogo {
+    gap: .45rem;
+  }
+  .nlogo-mark {
+    width: 28px;
+    height: 28px;
+    padding: 3px;
+  }
   .nlogo-t { font-size: 1.3rem; }
   .nlogo-s { font-size: .38rem; }
 
@@ -1969,7 +2040,8 @@ textarea {
 /* ═══════════════════════════════════════
    HINDI/ENGLISH TOGGLE
    ═══════════════════════════════════════ */
-.lang-btn {
+.lang-btn,
+.theme-btn {
   background: none;
   border: 1px solid var(--b1);
   color: var(--mu);
@@ -1982,9 +2054,25 @@ textarea {
   transition: color .15s, border-color .15s;
   white-space: nowrap;
   min-height: 30px;
-  margin-left: .5rem;
 }
-.lang-btn:hover {
+
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.theme-btn-ico {
+  font-size: .75rem;
+  line-height: 1;
+}
+
+.theme-btn-label {
+  font-family: inherit;
+}
+
+.lang-btn:hover,
+.theme-btn:hover {
   color: var(--pk);
   border-color: var(--pk35);
 }
@@ -2051,11 +2139,12 @@ textarea {
 }
 
 @media(max-width: 768px) {
-  .lang-btn {
+  .lang-btn,
+  .theme-btn {
     font-size: .45rem;
     padding: .2rem .5rem;
-    margin-left: auto;
   }
+  .nav-actions { gap: .35rem; }
   .upvote-btn {
     width: 100%;
     justify-content: center;

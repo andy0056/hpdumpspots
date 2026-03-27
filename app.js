@@ -34,10 +34,10 @@ function maybeShowWelcome() {
   const identity = getReporterIdentity();
   const g = identity.name ? identity.name + ", " : "";
   const msgs = [
-    g + "Pahadon ko saaf rakhein \u{1F3D4}\u{FE0F}",
-    g + "Himachal is watching. Report what you see \u{1F4CD}",
-    "Every dump spot reported = one step closer to clean hills \u{1F49A}",
-    g + "Welcome back. Keep Devbhoomi clean \u{1F332}",
+    t("toasts.welcome1", { name: g }),
+    t("toasts.welcome2", { name: g }),
+    t("toasts.welcome3"),
+    t("toasts.welcome4", { name: g }),
   ];
   setTimeout(() => {
     Toastify({
@@ -47,15 +47,15 @@ function maybeShowWelcome() {
       position: "center",
       stopOnFocus: true,
       style: {
-        background: "#FFFFFF",
-        border: "1px solid #1B7A3D",
-        color: "#1A1A1A",
+        background: "var(--s1)",
+        border: "1px solid var(--gn)",
+        color: "var(--tx)",
         fontFamily: "'DM Sans',sans-serif",
         fontSize: ".8rem",
         letterSpacing: ".2px",
         borderRadius: "8px",
         padding: ".65rem 1.1rem",
-        boxShadow: "0 4px 16px rgba(0,0,0,.1)",
+        boxShadow: "var(--sh)",
       },
     }).showToast();
   }, 700);
@@ -68,13 +68,13 @@ function toast(msg, err) {
     gravity: "bottom",
     position: "center",
     style: {
-      background: err ? "#FEF2F2" : "#FFFFFF",
-      border: err ? "1px solid #D42B2B" : "1px solid #1B7A3D",
-      color: err ? "#B91C1C" : "#1A1A1A",
+      background: err ? "var(--pk10)" : "var(--s1)",
+      border: err ? "1px solid var(--pk)" : "1px solid var(--gn)",
+      color: err ? "var(--pk)" : "var(--tx)",
       fontFamily: "'DM Sans',sans-serif",
       fontSize: ".8rem",
       borderRadius: "8px",
-      boxShadow: "0 4px 16px rgba(0,0,0,.1)",
+      boxShadow: "var(--sh)",
     },
   }).showToast();
 }
@@ -127,12 +127,13 @@ function genId() {
 
 function fmtTs(iso) {
   const d = new Date(iso);
-  const localDate = d.toLocaleDateString(undefined, {
+  const locale = getUiLocale();
+  const localDate = d.toLocaleDateString(locale, {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
-  const localTime = d.toLocaleTimeString(undefined, {
+  const localTime = d.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -142,7 +143,7 @@ function fmtTs(iso) {
   if (isIST) {
     return localDate + " · " + localTime + " IST";
   }
-  const istTime = d.toLocaleTimeString("en-IN", {
+  const istTime = d.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -200,6 +201,7 @@ function goBack() {
 function openDetail(id) {
   const r = reports.find((x) => x.id === id);
   if (!r) return;
+  currentDetailId = id;
   prevPage = "pg-feed";
   renderDetail(r);
   goPage("pg-detail");
@@ -222,7 +224,7 @@ async function fetchReports() {
     }));
   } catch (e) {
     toast(
-      "Could not load reports. Check Supabase tables, credentials, and connection.",
+      t("toasts.loadReports"),
       true,
     );
     reports = [];
@@ -244,14 +246,7 @@ function initMap() {
   );
   map.setMaxBounds([[29.5, 74.5], [34.0, 80.0]]);
   map.options.minZoom = 7;
-  L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    {
-      attribution: "© OpenStreetMap © CARTO",
-      subdomains: "abcd",
-      maxZoom: 19,
-    },
-  ).addTo(map);
+  mainTileLayer = createTileLayer().addTo(map);
   mLayer = L.layerGroup().addTo(map);
   buildDistrictFilter();
   buildCatFilter();
@@ -290,11 +285,11 @@ function buildPopHTML(r) {
       ? `<div class="pu-img"><img src="${r.photos[0]}"></div>`
       : `<div class="pu-img">${ICONS.photo}</div>`;
   const cats = (r.cats || [])
-    .map((c) => `<span class="pu-cat">${catIcon(c)}<span>${c}</span></span>`)
+    .map((c) => `<span class="pu-cat">${catIcon(c)}<span>${translateCategory(c)}</span></span>`)
     .join("");
   const districtLabel = r.district ? r.district + (r.area && r.area !== r.district ? ', ' + r.area : '') : r.area;
   const badge = getReporterBadgeHTML(r.reporter);
-  return `<div>${imgEl}<div class="pu-body"><div class="pu-loc">${r.specific}</div><div class="pu-area">${districtLabel}, ${r.state}</div>${cats ? `<div class="pu-cats">${cats}</div>` : ""}${r.notes ? `<div style="font-size:.72rem;color:var(--mu);margin-top:.28rem;line-height:1.4;">${r.notes}</div>` : ""}<div class="pu-meta"><span class="pu-by">by ${r.reporter}${badge}</span><span class="pu-date">${fmtTs(r.ts)}</span></div><button class="pu-link" id="pu-btn-${r.id}">View full report \u2192</button></div></div>`;
+  return `<div>${imgEl}<div class="pu-body"><div class="pu-loc">${r.specific}</div><div class="pu-area">${districtLabel}, ${r.state}</div>${cats ? `<div class="pu-cats">${cats}</div>` : ""}${r.notes ? `<div style="font-size:.72rem;color:var(--mu);margin-top:.28rem;line-height:1.4;">${r.notes}</div>` : ""}<div class="pu-meta"><span class="pu-by">${reporterByline(r.reporter)}${badge}</span><span class="pu-date">${fmtTs(r.ts)}</span></div><button class="pu-link" id="pu-btn-${r.id}">${t("feed.viewFull")}</button></div></div>`;
 }
 
 function getReporterBadgeHTML(name) {
@@ -326,7 +321,7 @@ function groupByTime(data) {
     else if (d >= yestStart) groups.yesterday.push(r);
     else if (d >= weekStart) groups.thisWeek.push(r);
     else {
-      const key = d.toLocaleDateString("en-IN", {
+      const key = d.toLocaleDateString(getUiLocale(), {
         month: "long",
         year: "numeric",
       });
@@ -340,9 +335,9 @@ function groupByTime(data) {
 function renderLCard(r) {
   const sc = sevClass(r.sev);
   const chips = (r.cats || [])
-    .map((c) => `<span class="chip">${catIcon(c)}<span>${c}</span></span>`)
+    .map((c) => `<span class="chip">${catIcon(c)}<span>${translateCategory(c)}</span></span>`)
     .join("");
-  const timeStr = new Date(r.ts).toLocaleTimeString("en-IN", {
+  const timeStr = new Date(r.ts).toLocaleTimeString(getUiLocale(), {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -354,7 +349,7 @@ function renderLCard(r) {
       ${chips ? `<div class="lcard-chips">${chips}</div>` : ""}
     </div>
     <div class="lcard-meta">
-      <span class="lcard-by">by ${r.reporter}${getReporterBadgeHTML(r.reporter)}</span>
+      <span class="lcard-by">${reporterByline(r.reporter)}${getReporterBadgeHTML(r.reporter)}</span>
       <span class="lcard-time">${timeStr}</span>
     </div>
   </div>`;
@@ -366,7 +361,7 @@ function renderGroup(label, items, cls) {
   return `<div class="clist-group">
     <div class="clist-heading ${cls}">
       <span class="clist-heading-label">${label}</span>
-      <span class="clist-heading-count">${items.length} report${items.length > 1 ? "s" : ""}</span>
+      <span class="clist-heading-count">${formatReportCount(items.length)}</span>
     </div>
     ${sorted.map(renderLCard).join("")}
   </div>`;
@@ -375,18 +370,18 @@ function renderGroup(label, items, cls) {
 function renderWall(data) {
   const el = document.getElementById("clist");
   if (!data.length) {
-    el.innerHTML = '<div class="list-empty">No spots match this filter.</div>';
+    el.innerHTML = `<div class="list-empty">${t("feed.noMatch")}</div>`;
     return;
   }
   const g = groupByTime(data);
   let html = "";
-  if (g.today.length) html += renderGroup("Today", g.today, "today");
+  if (g.today.length) html += renderGroup(t("feed.today"), g.today, "today");
   else if (g.yesterday.length)
-    html += renderGroup("Yesterday", g.yesterday, "yesterday");
+    html += renderGroup(t("feed.yesterday"), g.yesterday, "yesterday");
   if (g.today.length && g.yesterday.length)
-    html += renderGroup("Yesterday", g.yesterday, "yesterday");
+    html += renderGroup(t("feed.yesterday"), g.yesterday, "yesterday");
   if (g.thisWeek.length)
-    html += renderGroup("This week", g.thisWeek, "this-week");
+    html += renderGroup(t("feed.thisWeek"), g.thisWeek, "this-week");
   Object.keys(g.older)
     .sort((a, b) => new Date("01 " + b) - new Date("01 " + a))
     .forEach((k) => {
@@ -399,7 +394,7 @@ function buildDistrictFilter() {
   const el = document.getElementById("fs-district");
   if (!el) return;
   const current = el.value;
-  el.innerHTML = '<option value="">All districts</option>';
+  el.innerHTML = `<option value="">${t("feed.allDistricts")}</option>`;
   HP_DISTRICTS.forEach((d) => {
     const o = document.createElement("option");
     o.value = d;
@@ -412,26 +407,31 @@ function buildDistrictFilter() {
 function populateDistrictDropdowns() {
   const formSel = document.getElementById("rdistrict");
   if (!formSel) return;
-  formSel.innerHTML = '<option value="">Select district</option>';
+  const current = formSel.value;
+  formSel.innerHTML = `<option value="">${t("form.selectDistrict")}</option>`;
   HP_DISTRICTS.forEach((d) => {
     const o = document.createElement("option");
     o.value = d;
     o.textContent = d;
     formSel.appendChild(o);
   });
+  if (current) formSel.value = current;
 }
 
 function buildCatFilter() {
   const el = document.getElementById("fs-cat");
+  const current = el.value;
+  el.innerHTML = `<option value="">${t("feed.allCategories")}</option>`;
   CATS.forEach((c) => {
     const o = document.createElement("option");
     o.value = c.key;
-    o.textContent = c.label;
+    o.textContent = translateCategory(c.key);
     el.appendChild(o);
   });
+  if (current) el.value = current;
   document.getElementById("cgrid").innerHTML = CATS.map(
     (c) =>
-      `<div class="ccard" data-cat="${c.key}" onclick="toggleCat(this,'${c.key}')"><div class="ccard-ico">${ICONS[c.icon]}</div><div class="ccard-lbl">${c.label}</div></div>`,
+      `<div class="ccard${selCats.includes(c.key) ? " on" : ""}" data-cat="${c.key}" onclick="toggleCat(this,'${c.key}')"><div class="ccard-ico">${ICONS[c.icon]}</div><div class="ccard-lbl">${translateCategory(c.key)}</div></div>`,
   ).join("");
 }
 
@@ -441,10 +441,10 @@ function applyFilters() {
   const cat = document.getElementById("fs-cat").value;
   const areaEl = document.getElementById("fs-area");
   const prev = areaEl.value;
-  areaEl.innerHTML = '<option value="">All areas</option>';
+  areaEl.innerHTML = `<option value="">${t("feed.allAreas")}</option>`;
   [
     ...new Set(
-      reports.filter((r) => !district || r.area === district).map((r) => r.area),
+      reports.filter((r) => !district || r.district === district).map((r) => r.area),
     ),
   ]
     .sort()
@@ -457,7 +457,7 @@ function applyFilters() {
   if (prev) areaEl.value = prev;
   const area = areaEl.value;
   const filtered = reports.filter((r) => {
-    if (district && r.area !== district) return false;
+    if (district && r.district !== district) return false;
     if (area && r.area !== area) return false;
     if (cat && !(r.cats || []).includes(cat)) return false;
     return true;
@@ -465,7 +465,7 @@ function applyFilters() {
   const n = filtered.length;
   document.getElementById("cnt-n").textContent = n;
   const sp = document.querySelector(".cnt span");
-  if (sp) sp.textContent = n === 1 ? "spot" : "spots";
+  if (sp) sp.textContent = n === 1 ? t("feed.spotsOne") : t("feed.spotsOther");
   renderMarkers(filtered);
   renderWall(filtered);
 }
@@ -502,36 +502,36 @@ function renderDetail(r) {
     photos = `<div class="det-nophoto">${ICONS.photo}</div>`;
   }
   const cats = (r.cats || [])
-    .map((c) => `<div class="det-cat">${catIcon(c)}<span>${c}</span></div>`)
+    .map((c) => `<div class="det-cat">${catIcon(c)}<span>${translateCategory(c)}</span></div>`)
     .join("");
   const types = (r.type || [])
-    .map((t) => `<span class="det-tag">${t}</span>`)
+    .map((siteType) => `<span class="det-tag">${translateSiteType(siteType)}</span>`)
     .join("");
   const sevs = (r.sev || [])
-    .map((s) => `<span class="det-tag">${s}</span>`)
+    .map((severityValue) => `<span class="det-tag">${translateSeverity(severityValue)}</span>`)
     .join("");
   document.getElementById("det-content").innerHTML = `
     ${photos}
-    <div class="det-id-badge">Report ID <span>${r.id}</span></div>
+    <div class="det-id-badge">${t("detail.reportId")} <span>${r.id}</span></div>
     <div class="det-area">${r.district ? r.district : r.area}, ${r.state}${r.district && r.area && r.area !== r.district ? ' <span style="color:var(--mu);font-size:.75em;">&middot; ' + r.area + '</span>' : ''}</div>
     <div class="det-loc">${r.specific}</div>
-    <div class="det-timestamp">Submitted ${fmtTs(r.ts)} &nbsp;&middot;&nbsp; by ${r.reporter}${getReporterBadgeHTML(r.reporter)}</div>
+    <div class="det-timestamp">${t("detail.submittedBy", { time: fmtTs(r.ts), name: r.reporter })}${getReporterBadgeHTML(r.reporter)}</div>
     <div class="form-grid" style="margin-top:1.25rem;">
       <div class="form-col">
-        <div class="det-sec-label sl-loc" style="margin-bottom:.45rem;">Location</div>
+        <div class="det-sec-label sl-loc" style="margin-bottom:.45rem;">${t("detail.location")}</div>
         <div style="font-family:var(--fb);font-size:.85rem;color:var(--gn);font-weight:500;">
           ${r.state} &middot; ${r.area}
-          ${(!r.specific || r.specific === r.area) ? '<span style="font-size:0.65rem;font-weight:400;color:var(--mu);margin-left:6px;background:var(--s2);padding:2px 6px;border-radius:4px;">Approximate Region</span>' : ''}
+          ${(!r.specific || r.specific === r.area) ? '<span style="font-size:0.65rem;font-weight:400;color:var(--mu);margin-left:6px;background:var(--s2);padding:2px 6px;border-radius:4px;">' + t("detail.approximateRegion") + '</span>' : ''}
         </div>
-        ${r.gmaps_link ? `<div style="margin-top:.45rem;"><a href="${r.gmaps_link}" target="_blank" style="font-family:var(--fm);font-size:.65rem;color:var(--pk);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>View on Google Maps</a></div>` : ''}
-        ${r.notes ? `<div class="det-sec-label sl-loc" style="margin-top:1.1rem;margin-bottom:.45rem;">Notes</div><div class="det-notes">${r.notes}</div>` : ""}
+        ${r.gmaps_link ? `<div style="margin-top:.45rem;"><a href="${r.gmaps_link}" target="_blank" style="font-family:var(--fm);font-size:.65rem;color:var(--pk);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>${t("detail.viewOnMaps")}</a></div>` : ''}
+        ${r.notes ? `<div class="det-sec-label sl-loc" style="margin-top:1.1rem;margin-bottom:.45rem;">${t("detail.notes")}</div><div class="det-notes">${r.notes}</div>` : ""}
       </div>
       <div class="form-col">
-        ${types ? `<div class="det-sec-label sl-site" style="margin-bottom:.45rem;">Type of site</div><div class="det-tags" style="margin-bottom:.85rem;">${types}</div>` : ""}
-        ${sevs ? `<div class="det-sec-label sl-sev" style="margin-bottom:.45rem;">Severity</div><div class="det-tags">${sevs}</div>` : ""}
+        ${types ? `<div class="det-sec-label sl-site" style="margin-bottom:.45rem;">${t("detail.siteType")}</div><div class="det-tags" style="margin-bottom:.85rem;">${types}</div>` : ""}
+        ${sevs ? `<div class="det-sec-label sl-sev" style="margin-bottom:.45rem;">${t("detail.severity")}</div><div class="det-tags">${sevs}</div>` : ""}
       </div>
       <div class="form-col">
-        ${cats ? `<div class="det-sec-label sl-cat" style="margin-bottom:.45rem;">Garbage category</div><div class="det-cats">${cats}</div>` : ""}
+        ${cats ? `<div class="det-sec-label sl-cat" style="margin-bottom:.45rem;">${t("detail.garbageCategory")}</div><div class="det-cats">${cats}</div>` : ""}
       </div>
     </div>`;
   const mm = document.getElementById("det-mini-map");
@@ -551,10 +551,7 @@ function renderDetail(r) {
       touchZoom: false,
       doubleClickZoom: false,
     }).setView([r.lat, r.lng], 14);
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-      { subdomains: "abcd", maxZoom: 19 },
-    ).addTo(detMap);
+    detailTileLayer = createTileLayer().addTo(detMap);
     L.circle([r.lat, r.lng], {
       radius: 400,
       color: "#1B7A3D",
@@ -573,7 +570,7 @@ function renderDetail(r) {
     const upvotes = getUpvotes();
     const already = !!upvotes[r.id];
     upWrap.innerHTML = '<button class="upvote-btn' + (already ? ' upvoted' : '') + '" id="upvote-' + r.id + '" onclick="upvoteReport(\'' + r.id + '\')">' +
-      (already ? '\u2714 Confirmed' : '\uD83D\uDC41 I see this too') + '</button>';
+      (already ? t("detail.upvoted") : t("detail.upvote")) + '</button>';
   }
 }
 
@@ -589,7 +586,7 @@ function onLocInput(val) {
     box.innerHTML = "";
     return;
   }
-  box.innerHTML = '<div class="loc-searching">Searching…</div>';
+  box.innerHTML = '<div class="loc-searching">' + t("feed.searching") + '</div>';
   box.classList.add("open");
   locTimer = setTimeout(() => searchLoc(val), 500);
 }
@@ -632,7 +629,7 @@ async function searchLoc(q) {
 
     if (!data.length) {
       box.innerHTML =
-        '<div class="loc-searching">No results found. Try a nearby landmark or use GPS below.</div>';
+        '<div class="loc-searching">' + t("feed.noResults") + '</div>';
       return;
     }
     box.innerHTML = data
@@ -643,7 +640,7 @@ async function searchLoc(q) {
       .join("");
   } catch (e) {
     box.innerHTML =
-      '<div class="loc-searching">Search unavailable. Use GPS or type manually.</div>';
+      '<div class="loc-searching">' + t("feed.searchUnavailable") + '</div>';
   }
 }
 
@@ -664,11 +661,11 @@ function pickLoc(name, lat, lng) {
 
 function useMyLocation() {
   if (!navigator.geolocation) {
-    toast("GPS not available on this device", true);
+    toast(t("toasts.gpsUnavailable"), true);
     return;
   }
   const btn = document.querySelector(".loc-gps-btn");
-  if (btn) { btn.textContent = "Locating…"; btn.disabled = true; }
+  if (btn) { btn.textContent = t("form.locating"); btn.disabled = true; }
 
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
@@ -692,12 +689,12 @@ function useMyLocation() {
         document.getElementById("rspec").value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
       }
       initPinMap(lat, lng);
-      toast("📍 Location pinned from GPS", false);
-      if (btn) { btn.textContent = "📍 Use my current location"; btn.disabled = false; }
+      toast(t("toasts.gpsPinned"), false);
+      if (btn) { btn.textContent = t("form.useMyLocation"); btn.disabled = false; }
     },
     (err) => {
-      toast("Could not get location — check GPS permissions", true);
-      if (btn) { btn.textContent = "📍 Use my current location"; btn.disabled = false; }
+      toast(t("toasts.gpsFailed"), true);
+      if (btn) { btn.textContent = t("form.useMyLocation"); btn.disabled = false; }
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
   );
@@ -727,7 +724,7 @@ document.addEventListener("DOMContentLoaded", () => {
     t.addEventListener("click", () => {
       const g = t.dataset.g;
       t.classList.toggle("on");
-      const v = t.textContent.trim();
+      const v = t.dataset.value || t.textContent.trim();
       if (t.classList.contains("on")) selTags[g].push(v);
       else selTags[g] = selTags[g].filter((x) => x !== v);
     });
@@ -833,7 +830,10 @@ function renderPreviews() {
     d.appendChild(btn);
     pg.appendChild(d);
   });
-  uc.textContent = `${upFiles.length}/6 photo${upFiles.length > 1 ? "s" : ""}`;
+  uc.textContent =
+    upFiles.length > 1
+      ? t("form.photoCountPlural", { count: upFiles.length })
+      : t("form.photoCountSingular", { count: upFiles.length });
   const full = upFiles.length >= 6;
   ui.disabled = full;
   ua.style.opacity = full ? "0.5" : "1";
@@ -850,11 +850,11 @@ async function submitReport() {
   const gmapsLink = document.getElementById("gmaps-link") ? document.getElementById("gmaps-link").value.trim() : "";
   
   if (!name || !district || !area) {
-    toast("Fill in your name, district, and area.", true);
+    toast(t("toasts.fillRequired"), true);
     return;
   }
   if (!upFiles.length) {
-    toast("Add at least one photo.", true);
+    toast(t("toasts.addPhoto"), true);
     return;
   }
 
@@ -865,11 +865,11 @@ async function submitReport() {
     return;
   }
   if (looksLikeAbbr(document.getElementById("rarea").value.trim()))
-    toast("Area looks like an abbreviation — write the full area name.", true);
+    toast(t("toasts.areaAbbr"), true);
 
   const btn = document.querySelector(".sub-btn");
 
-  btn.textContent = "Checking photos…";
+  btn.textContent = t("form.checkingPhotos");
   btn.disabled = true;
   const imgResults = await checkAllImages(upFiles);
   const newFlags = imgResults.filter(
@@ -879,15 +879,14 @@ async function submitReport() {
     newFlags.forEach((r) => {
       flaggedImageIndices.add(r.index - 1);
       toast(
-        "Photo " +
-          r.index +
-          ": " +
-          r.issues[0] +
-          " — remove it or submit again to override.",
+        t("toasts.photoFlagged", {
+          index: r.index,
+          issue: r.issues[0],
+        }),
         true,
       );
     });
-    btn.textContent = "Submit Report";
+    btn.textContent = t("form.submit");
     btn.disabled = false;
     return;
   }
@@ -904,17 +903,17 @@ async function submitReport() {
           flaggedImageIndices.delete(i);
         });
       renderPreviews();
-      toast("Flagged photos removed. Submitting remaining photos.", false);
+      toast(t("toasts.flaggedRemoved"), false);
     }
   }
   if (!upFiles.length) {
-    toast("No valid photos remaining. Please add at least one.", true);
-    btn.textContent = "Submit Report";
+    toast(t("toasts.noValidPhotos"), true);
+    btn.textContent = t("form.submit");
     btn.disabled = false;
     return;
   }
 
-  btn.textContent = "Uploading…";
+  btn.textContent = t("form.uploading");
   try {
     const id = genId();
     const photoUrls = [];
@@ -948,11 +947,8 @@ async function submitReport() {
       } catch (e) {}
     }
     if (resolvedLat === null || resolvedLng === null) {
-      toast(
-        "Could not determine approximate coordinates. Please provide a slightly more descriptive area.",
-        true,
-      );
-      btn.textContent = "Submit Report";
+      toast(t("toasts.coordsFailed"), true);
+      btn.textContent = t("form.submit");
       btn.disabled = false;
       return;
     }
@@ -998,21 +994,24 @@ async function submitReport() {
     const karmaResult = awardKarma(district);
     document.getElementById("form-screen").style.display = "none";
     document.getElementById("succ").classList.add("on");
-    document.getElementById("succ-id").textContent = "ID: " + id;
-    const karmaEl = document.getElementById("succ-karma");
-    if (karmaEl && karmaResult.points > 0) {
-      karmaEl.innerHTML = '<div class="karma-earned">+' + karmaResult.points + ' karma</div><div class="karma-earned-label">' + karmaResult.labels.join(' · ') + '</div>';
-    }
+    lastSuccessState = { id, karmaResult };
+    renderSuccessState();
     window._lastReportId = id;
     window._lastReportSpecific = specific;
     window._lastReportDistrict = district;
   } catch (e) {
     const hint =
       e && String(e.message || "").includes("404")
-        ? " Check that reports and report_photos exist in Supabase."
+        ? t("toasts.submit404Hint")
         : "";
-    toast("Submit failed: " + (e.message || "unknown error") + hint, true);
-    btn.textContent = "Submit Report";
+    toast(
+      t("toasts.submitFailed", {
+        message: e.message || t("toasts.unknownError"),
+        hint,
+      }),
+      true,
+    );
+    btn.textContent = t("form.submit");
     btn.disabled = false;
   }
 }
@@ -1044,8 +1043,9 @@ function resetForm() {
   renderPreviews();
   document.getElementById("form-screen").style.display = "";
   document.getElementById("succ").classList.remove("on");
+  lastSuccessState = null;
   const btn = document.querySelector(".sub-btn");
-  btn.textContent = "Submit Report";
+  btn.textContent = t("form.submit");
   btn.disabled = false;
   const ua = document.getElementById("uparea"),
     ui = document.getElementById("photo-input");
@@ -1057,6 +1057,12 @@ function resetForm() {
 }
 
 window.addEventListener("load", () => {
+  const storedTheme = localStorage.getItem("ds_theme");
+  const systemTheme =
+    window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  applyTheme(storedTheme || systemTheme, false);
   sizeViews();
   populateDistrictDropdowns();
   initMap();
@@ -1066,6 +1072,13 @@ window.addEventListener("load", () => {
   applyLang();
   maybeShowWelcome();
 });
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+    if (!localStorage.getItem("ds_theme")) {
+      applyTheme(e.matches ? "dark" : "light", false);
+    }
+  });
+}
 window.addEventListener("resize", sizeViews);
 const DP_CHARS = "FCJ9RELEEBEMG8D7VT6KH5LNQP4SZ3Y2X1W0";
 
@@ -1147,13 +1160,7 @@ function initPinMap(lat, lng) {
       zoomControl: true,
       scrollWheelZoom: false,
     }).setView([lat, lng], 16);
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-      {
-        subdomains: "abcd",
-        maxZoom: 19,
-      },
-    ).addTo(pinMap);
+    pinTileLayer = createTileLayer().addTo(pinMap);
     const icon = L.divIcon({
       className: "",
       html: `<div class="dpin" style="cursor:grab;">${ICONS.drop}</div>`,
@@ -1183,8 +1190,8 @@ function updatePinInfo(lat, lng) {
   const dpEl = document.getElementById("pin-digipin");
   if (dpEl) {
     const parts = [];
-    if (codes.digipin) parts.push("DigiPin: " + codes.digipin);
-    if (codes.pluscode) parts.push("Plus Code: " + codes.pluscode);
+    if (codes.digipin) parts.push(t("form.digipin") + ": " + codes.digipin);
+    if (codes.pluscode) parts.push(t("form.plusCode") + ": " + codes.pluscode);
     dpEl.textContent = parts.join("  ·  ");
   }
   clearTimeout(revGeoTimer);
@@ -1194,7 +1201,7 @@ function updatePinInfo(lat, lng) {
 async function reverseGeocode(lat, lng) {
   const el = document.getElementById("pin-revgeo");
   if (!el) return;
-  el.textContent = "Locating…";
+  el.textContent = t("form.locating");
   try {
     const res = await fetch(
       "https://nominatim.openstreetmap.org/reverse?lat=" +
@@ -1242,9 +1249,14 @@ async function validateLocationField(val, fieldType) {
       const isCity = !!(a.city || a.town || a.village || a.suburb);
       const isState = !!(a.state && !a.city && !a.town);
       if (isCity && !isState) {
-        const stateHint = a.state ? ' Did you mean "' + a.state + '"?' : "";
+        const stateHint = a.state
+          ? t("toasts.stateHint", { value: a.state })
+          : "";
         toast(
-          'State field: "' + val.trim() + '" looks like a city.' + stateHint,
+          t("toasts.stateLooksCity", {
+            value: val.trim(),
+            hint: stateHint,
+          }),
           true,
         );
       }
@@ -1253,10 +1265,13 @@ async function validateLocationField(val, fieldType) {
         !!a.state && !(a.city || a.town || a.village || a.suburb || a.county);
       if (isState) {
         const cityHint = a.county
-          ? ' Try a district like "' + a.county + '".'
+          ? t("toasts.districtHint", { value: a.county })
           : "";
         toast(
-          'Area field: "' + val.trim() + '" looks like a state.' + cityHint,
+          t("toasts.areaLooksState", {
+            value: val.trim(),
+            hint: cityHint,
+          }),
           true,
         );
       }
@@ -1414,36 +1429,34 @@ function isGibberish(str) {
 function checkTextSpam(name, state, area, specific, notes) {
   const errors = [];
   const required = [
-    { label: "reporter name", val: name },
-    { label: "state", val: state },
-    { label: "area", val: area },
+    { label: t("labels.reporterName"), val: name },
+    { label: t("labels.state"), val: state },
+    { label: t("labels.area"), val: area },
   ];
   for (const f of required) {
     const abuse = containsAbuse(f.val);
     if (abuse) {
-      errors.push(f.label + " contains inappropriate language");
+      errors.push(t("toasts.textInappropriate", { label: f.label }));
       continue;
     }
     if (isGibberish(f.val))
-      errors.push(f.label + " does not look like a real value");
+      errors.push(t("toasts.textUnreal", { label: f.label }));
   }
   if (specific) {
     const locationAbuse = containsAbuse(specific);
     if (locationAbuse) {
-      errors.push("location contains inappropriate language");
+      errors.push(t("toasts.textInappropriate", { label: t("labels.location") }));
     } else if (isGibberish(specific)) {
-      errors.push("location does not look like a real value");
+      errors.push(t("toasts.textUnreal", { label: t("labels.location") }));
     }
   }
   if (notes) {
     const notesAbuse = containsAbuse(notes);
-    if (notesAbuse) errors.push("notes contain inappropriate language");
+    if (notesAbuse) errors.push(t("toasts.textInappropriate", { label: t("labels.notes") }));
     const noteWords = notes.trim().split(/\s+/);
     const gibWords = noteWords.filter((w) => w.length > 2 && isGibberish(w));
     if (gibWords.length >= 1)
-      errors.push(
-        "notes appear to contain gibberish — please describe what you see clearly",
-      );
+      errors.push(t("toasts.notesGibberish"));
   }
   return errors;
 }
@@ -1493,8 +1506,8 @@ async function analyseImage(file) {
         }, 0) / greys.length;
       const issues = [];
       if (dominance > 0.75)
-        issues.push("appears to be a blank or solid-colour image");
-      if (variance < 100) issues.push("appears to have no real detail");
+        issues.push(t("toasts.photoBlank"));
+      if (variance < 100) issues.push(t("toasts.photoNoDetail"));
       const saturations = [];
       for (let i = 0; i < d.length; i += 4) {
         const r = d[i],
@@ -1513,9 +1526,7 @@ async function analyseImage(file) {
         (avgSat > 0.38 && highSatPx > 0.28 && variance > 300) ||
         (veryHighSatPx > 0.25 && lowSatPx > 0.3);
       if (isIllustration) {
-        issues.push(
-          "photo looks like an illustration or artwork — please upload a real photo of the location",
-        );
+        issues.push(t("toasts.photoIllustration"));
       }
       resolve({ ok: issues.length === 0, issues: issues });
     };
@@ -1560,9 +1571,7 @@ async function checkFaceInImage(file) {
     if (det.length > 0)
       return {
         ok: false,
-        issues: [
-          "photo appears to show a person — please upload a photo of the location, not people",
-        ],
+        issues: [t("toasts.photoPerson")],
       };
   } catch (e) {
     console.warn("[DumpSpot] face detection error:", e.message);
@@ -1711,7 +1720,10 @@ function renderKarmaPanel() {
 
   // Name
   const nameEl = document.getElementById("karma-name");
-  if (nameEl) nameEl.textContent = identity.name ? identity.name : "Anonymous Reporter";
+  if (nameEl)
+    nameEl.textContent = identity.name
+      ? identity.name
+      : t("karma.anonymousReporter");
 
   // Milestones
   const msEl = document.getElementById("karma-milestones");
@@ -1720,8 +1732,12 @@ function renderKarmaPanel() {
       const unlocked = (identity.totalReports || 0) >= m.count;
       return '<div class="km-card ' + (unlocked ? "km-unlocked" : "km-locked") + '">' +
         '<div class="km-emoji">' + m.emoji + '</div>' +
-        '<div class="km-title">' + m.title + '</div>' +
-        '<div class="km-req">' + m.count + ' report' + (m.count > 1 ? 's' : '') + '</div>' +
+        '<div class="km-title">' + translateMilestoneTitle(m.title) + '</div>' +
+        '<div class="km-req">' +
+          (m.count > 1
+            ? t("karma.unlockedReportsPlural", { count: m.count })
+            : t("karma.unlockedReportsSingular", { count: m.count })) +
+        '</div>' +
         '</div>';
     }).join("");
   }
@@ -1730,7 +1746,7 @@ function renderKarmaPanel() {
   const streakHtml = '<div class="karma-streak">' +
     '<span class="streak-flame">\uD83D\uDD25</span> ' +
     '<span class="streak-num">' + (identity.currentStreak || 0) + '</span> ' +
-    '<span class="streak-label">week streak</span>' +
+    '<span class="streak-label">' + t("karma.weekStreak") + '</span>' +
     '</div>';
   const headerEl = document.querySelector('.karma-header');
   let existingStreak = document.querySelector('.karma-streak');
@@ -1741,15 +1757,15 @@ function renderKarmaPanel() {
   const logEl = document.getElementById("karma-log");
   if (logEl) {
     if (!identity.log || !identity.log.length) {
-      logEl.innerHTML = '<div class="kl-empty">No activity yet. Submit your first report!</div>';
+      logEl.innerHTML = '<div class="kl-empty">' + t("karma.noActivity") + '</div>';
     } else {
       logEl.innerHTML = identity.log.slice(0, 10).map((entry) => {
         const d = new Date(entry.ts);
-        const dateStr = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+        const dateStr = d.toLocaleDateString(getUiLocale(), { day: "2-digit", month: "short" });
         return '<div class="kl-entry">' +
           '<div class="kl-points">+' + entry.points + '</div>' +
           '<div class="kl-info">' +
-          '<div class="kl-labels">' + entry.labels.join(" \u00b7 ") + '</div>' +
+          '<div class="kl-labels">' + entry.labels.map(translateLogLabel).join(" \u00b7 ") + '</div>' +
           '<div class="kl-meta">' + (entry.district || "") + " \u00b7 " + dateStr + '</div>' +
           '</div></div>';
       }).join("");
@@ -1761,13 +1777,30 @@ function renderKarmaPanel() {
    WHATSAPP SHARE
    ═══════════════════════════════════════════════ */
 function shareOnWhatsApp() {
-  const specific = window._lastReportSpecific || "a location";
+  const specific = window._lastReportSpecific || (currentLang === "hi" ? "एक स्थान" : "a location");
   const district = window._lastReportDistrict || "Himachal Pradesh";
-  const text = "I just reported a dump spot at " + specific + ", " + district +
-    " on DumpSpot HP! Help keep Devbhoomi clean \u2014 report what you see: " +
+  const text = (currentLang === "hi"
+    ? "मैंने DumpSpot HP पर " + specific + ", " + district + " में एक डम्प स्पॉट रिपोर्ट किया है। देवभूमि को साफ रखने में साथ दें — जो देखें, रिपोर्ट करें: "
+    : "I just reported a dump spot at " + specific + ", " + district + " on DumpSpot HP! Help keep Devbhoomi clean — report what you see: ") +
     (location.origin || "https://dumpspot.hp");
   const url = "https://wa.me/?text=" + encodeURIComponent(text);
   window.open(url, "_blank");
+}
+
+function renderSuccessState() {
+  if (!lastSuccessState) return;
+  document.getElementById("succ-id").textContent = t("success.id", { id: lastSuccessState.id });
+  const karmaEl = document.getElementById("succ-karma");
+  if (karmaEl && lastSuccessState.karmaResult.points > 0) {
+    karmaEl.innerHTML =
+      '<div class="karma-earned">' +
+      t("success.karmaEarned", { points: lastSuccessState.karmaResult.points }) +
+      '</div><div class="karma-earned-label">' +
+      lastSuccessState.karmaResult.labels.map(translateLogLabel).join(" · ") +
+      '</div>';
+  } else if (karmaEl) {
+    karmaEl.innerHTML = "";
+  }
 }
 
 /* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
@@ -1828,7 +1861,7 @@ function autoDetectDistrict() {
           const sel = document.getElementById('rdistrict');
           if (sel && !sel.value) {
             sel.value = match;
-            toast('District auto-detected: ' + match, false);
+            toast(t("toasts.districtAuto", { district: match }), false);
           }
         }
       }
@@ -1840,82 +1873,618 @@ function autoDetectDistrict() {
    REPORTER LEVEL BADGE
    \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
 function getReporterLevel(count) {
-  if (count >= 50) return { title: 'Pahadi Legend', emoji: '\uD83D\uDC51' };
-  if (count >= 25) return { title: 'Champion', emoji: '\u2B50' };
-  if (count >= 10) return { title: 'Watchdog', emoji: '\uD83D\uDC3E' };
-  if (count >= 5)  return { title: 'Guardian', emoji: '\uD83C\uDFD4\uFE0F' };
-  if (count >= 1)  return { title: 'Reporter', emoji: '\uD83C\uDF31' };
+  if (count >= 50) return { title: translateLevelTitle("legend"), emoji: '\uD83D\uDC51' };
+  if (count >= 25) return { title: translateLevelTitle("champion"), emoji: '\u2B50' };
+  if (count >= 10) return { title: translateLevelTitle("watchdog"), emoji: '\uD83D\uDC3E' };
+  if (count >= 5)  return { title: translateLevelTitle("guardian"), emoji: '\uD83C\uDFD4\uFE0F' };
+  if (count >= 1)  return { title: translateLevelTitle("reporter"), emoji: '\uD83C\uDF31' };
   return null;
 }
 
 /* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
    HINDI / ENGLISH TOGGLE
    \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
-const LABELS = {
+const TRANSLATIONS = {
   en: {
-    name: 'Your name',
-    district: 'District',
-    area: 'Area',
-    location: 'Specific location',
-    siteType: 'Type of site',
-    severity: 'Severity',
-    category: 'Garbage category',
-    notes: 'Notes',
-    photos: 'Photos',
-    submit: 'Submit Report',
-    karma: 'karma points',
-    milestones: 'Milestones',
-    activity: 'Recent Activity',
+    brand: {
+      subtitle: "DumpSpot · community reporting",
+    },
+    nav: {
+      feed: "Feed",
+      report: "+ Report",
+      reportMobile: "Report",
+      karma: "Karma",
+      darkMode: "Dark",
+      lightMode: "Light",
+    },
+    common: {
+      optional: "optional",
+    },
+    feed: {
+      filter: "Filter",
+      allDistricts: "All districts",
+      allAreas: "All areas",
+      allCategories: "All categories",
+      map: "Map",
+      list: "List",
+      spotsOne: "spot",
+      spotsOther: "spots",
+      loading: "Loading reports…",
+      noMatch: "No spots match this filter.",
+      today: "Today",
+      yesterday: "Yesterday",
+      thisWeek: "This week",
+      viewFull: "View full report →",
+      searching: "Searching…",
+      noResults: "No results found. Try a nearby landmark or use GPS below.",
+      searchUnavailable: "Search unavailable. Use GPS or type manually.",
+      reportSingular: "{{count}} report",
+      reportPlural: "{{count}} reports",
+    },
+    detail: {
+      backToFeed: "Back to feed",
+      reportId: "Report ID",
+      submittedBy: "Submitted {{time}} · by {{name}}",
+      location: "Location",
+      approximateRegion: "Approximate Region",
+      notes: "Notes",
+      siteType: "Type of site",
+      severity: "Severity",
+      garbageCategory: "Garbage category",
+      viewOnMaps: "View on Google Maps",
+      upvote: "👁 I see this too",
+      upvoted: "✔ Confirmed",
+    },
+    form: {
+      intro: "See garbage piling up on your street? Drop a pin.<br>No login, no hassle — a name, a place, a photo.",
+      name: "Your name",
+      namePlaceholder: "What to call you",
+      district: "District",
+      area: "Area",
+      selectDistrict: "Select district",
+      areaPlaceholder: "Town / Area / Locality",
+      specificLocation: "Specific location",
+      specificPlaceholder: "e.g. Behind the old Shiv temple",
+      gmapsPlaceholder: "Paste a Google Maps link (Optional)",
+      locationHelp: "Can't find the exact spot on the map? Just describe it above or paste a link.",
+      useMyLocation: "📍 Use my current location",
+      findOnGoogleMaps: "Or find on Google Maps",
+      dragPin: "Drag the pin to exact location",
+      dragPinHint: "· tap map to move",
+      siteType: "Type of site",
+      severity: "Severity",
+      garbageCategory: "Garbage category",
+      notes: "Notes",
+      notesPlaceholder: "Smell, duration, any hazard to public…",
+      photos: "Photos",
+      tapToAddPhotos: "Tap to add photos",
+      photoFormats: "1 to 6 · JPG PNG WEBP",
+      anonymousNote: "No account needed<br>anonymous beyond your name",
+      submit: "Submit Report",
+      checkingPhotos: "Checking photos…",
+      uploading: "Uploading…",
+      locating: "Locating…",
+      digipin: "DigiPin",
+      plusCode: "Plus Code",
+      photoCountSingular: "{{count}}/6 photo",
+      photoCountPlural: "{{count}}/6 photos",
+    },
+    success: {
+      title: "Pinned.",
+      subtitle: "Your report is live on the map.<br>Keep Devbhoomi clean — share it.",
+      shareWhatsapp: "Share on WhatsApp",
+      reportAnother: "Report another spot",
+      id: "ID: {{id}}",
+      karmaEarned: "+{{points}} karma",
+    },
+    karma: {
+      points: "karma points",
+      subtitle: "Your quiet impact on Devbhoomi",
+      milestones: "Milestones",
+      recentActivity: "Recent Activity",
+      anonymousReporter: "Anonymous Reporter",
+      weekStreak: "week streak",
+      noActivity: "No activity yet. Submit your first report!",
+      unlockedReportsSingular: "{{count}} report",
+      unlockedReportsPlural: "{{count}} reports",
+    },
+    site: {
+      road: "Road",
+      footpath: "Footpath",
+      nalaDrain: "Nala / Drain",
+      openPlot: "Open plot",
+      nearTemple: "Near temple",
+      touristSpot: "Tourist spot",
+      riverBank: "River / Nala bank",
+      forestArea: "Forest area",
+      market: "Market",
+      nearSchool: "Near school",
+      nearHospital: "Near hospital",
+    },
+    severity: {
+      minor: "Minor",
+      moderate: "Moderate",
+      severe: "Severe",
+      blockingRoad: "Blocking road",
+    },
+    categories: {
+      "Plastic waste": "Plastic",
+      "Food waste": "Food waste",
+      Construction: "Debris",
+      "Nala / Sewage": "Nala / Sewage",
+      "Burning garbage": "Burning",
+      "E-waste": "E-waste",
+      "Medical waste": "Medical",
+      "Animal waste": "Animal",
+      "Mixed / general": "Mixed",
+      "Landslide debris": "Landslide",
+      "Tourist litter": "Tourist litter",
+    },
+    levels: {
+      reporter: "Reporter",
+      guardian: "Guardian",
+      watchdog: "Watchdog",
+      champion: "Champion",
+      legend: "Pahadi Legend",
+    },
+    milestones: {
+      firstReporter: "First Reporter",
+      hillGuardian: "Hill Guardian",
+      watchdog: "Devbhoomi Watchdog",
+      champion: "Clean Himachal Champion",
+      legend: "Pahadi Legend",
+    },
+    karmaLabels: {
+      firstEyes: "First eyes on the ground",
+      anotherSpot: "Another spot mapped",
+      expandingMap: "Expanding the map",
+      districtWatchdog: "District watchdog",
+      stillWatching: "Still watching",
+      keptWatch: "Kept watch on the ground",
+      newDistrict: "Covered a new district",
+      districtStreak: "3 reports in one district",
+      verifiedSpot: "Verified a spot",
+    },
+    toasts: {
+      welcome1: "{{name}}Pahadon ko saaf rakhein 🏔️",
+      welcome2: "{{name}}Himachal is watching. Report what you see 📍",
+      welcome3: "Every dump spot reported = one step closer to clean hills 💚",
+      welcome4: "{{name}}Welcome back. Keep Devbhoomi clean 🌲",
+      loadReports: "Could not load reports. Check Supabase tables, credentials, and connection.",
+      gpsUnavailable: "GPS not available on this device",
+      gpsPinned: "📍 Location pinned from GPS",
+      gpsFailed: "Could not get location — check GPS permissions",
+      fillRequired: "Fill in your name, district, and area.",
+      addPhoto: "Add at least one photo.",
+      areaAbbr: "Area looks like an abbreviation — write the full area name.",
+      flaggedRemoved: "Flagged photos removed. Submitting remaining photos.",
+      noValidPhotos: "No valid photos remaining. Please add at least one.",
+      coordsFailed: "Could not determine approximate coordinates. Please provide a slightly more descriptive area.",
+      submitFailed: "Submit failed: {{message}}{{hint}}",
+      submit404Hint: " Check that reports and report_photos exist in Supabase.",
+      unknownError: "unknown error",
+      districtAuto: "District auto-detected: {{district}}",
+      alreadyConfirmed: "You already confirmed this spot",
+      confirmedSpot: "Spot confirmed — +2 karma for verification",
+      stateHint: " Did you mean \"{{value}}\"?",
+      districtHint: " Try a district like \"{{value}}\".",
+      stateLooksCity: "State field: \"{{value}}\" looks like a city.{{hint}}",
+      areaLooksState: "Area field: \"{{value}}\" looks like a state.{{hint}}",
+      photoFlagged: "Photo {{index}}: {{issue}} — remove it or submit again to override.",
+      photoBlank: "appears to be a blank or solid-colour image",
+      photoNoDetail: "appears to have no real detail",
+      photoIllustration: "photo looks like an illustration or artwork — please upload a real photo of the location",
+      photoPerson: "photo appears to show a person — please upload a photo of the location, not people",
+      textInappropriate: "{{label}} contains inappropriate language",
+      textUnreal: "{{label}} does not look like a real value",
+      notesGibberish: "notes appear to contain gibberish — please describe what you see clearly",
+    },
+    labels: {
+      reporterName: "reporter name",
+      state: "state",
+      area: "area",
+      location: "location",
+      notes: "notes",
+    },
   },
   hi: {
-    name: '\u0906\u092A\u0915\u093E \u0928\u093E\u092E',
-    district: '\u091C\u093F\u0932\u093E',
-    area: '\u0915\u094D\u0937\u0947\u0924\u094D\u0930',
-    location: '\u0938\u094D\u0925\u093E\u0928',
-    siteType: '\u091C\u0917\u0939 \u0915\u093E \u092A\u094D\u0930\u0915\u093E\u0930',
-    severity: '\u0917\u0902\u092D\u0940\u0930\u0924\u093E',
-    category: '\u0915\u091A\u0930\u0947 \u0915\u0940 \u0936\u094D\u0930\u0947\u0923\u0940',
-    notes: '\u091F\u093F\u092A\u094D\u092A\u0923\u0940',
-    photos: '\u0924\u0938\u094D\u0935\u0940\u0930\u0947\u0902',
-    submit: '\u0930\u093F\u092A\u094B\u0930\u094D\u091F \u092D\u0947\u091C\u0947\u0902',
-    karma: '\u0915\u0930\u094D\u092E \u0905\u0902\u0915',
-    milestones: '\u0909\u092A\u0932\u092C\u094D\u0927\u093F\u092F\u093E\u0901',
-    activity: '\u0939\u093E\u0932 \u0915\u0940 \u0917\u0924\u093F\u0935\u093F\u0927\u093F',
-  }
+    brand: {
+      subtitle: "डम्पस्पॉट · सामुदायिक रिपोर्टिंग",
+    },
+    nav: {
+      feed: "फ़ीड",
+      report: "+ रिपोर्ट",
+      reportMobile: "रिपोर्ट",
+      karma: "कर्म",
+      darkMode: "डार्क",
+      lightMode: "लाइट",
+    },
+    common: {
+      optional: "वैकल्पिक",
+    },
+    feed: {
+      filter: "फ़िल्टर",
+      allDistricts: "सभी जिले",
+      allAreas: "सभी क्षेत्र",
+      allCategories: "सभी श्रेणियां",
+      map: "मैप",
+      list: "सूची",
+      spotsOne: "स्थान",
+      spotsOther: "स्थान",
+      loading: "रिपोर्ट लोड हो रही हैं…",
+      noMatch: "इस फ़िल्टर से कोई जगह नहीं मिली।",
+      today: "आज",
+      yesterday: "कल",
+      thisWeek: "इस सप्ताह",
+      viewFull: "पूरी रिपोर्ट देखें →",
+      searching: "खोज जारी है…",
+      noResults: "कोई नतीजा नहीं मिला। पास के किसी चिन्ह या GPS का उपयोग करें।",
+      searchUnavailable: "खोज उपलब्ध नहीं है। GPS या मैनुअल एंट्री का उपयोग करें।",
+      reportSingular: "{{count}} रिपोर्ट",
+      reportPlural: "{{count}} रिपोर्ट",
+    },
+    detail: {
+      backToFeed: "फ़ीड पर वापस",
+      reportId: "रिपोर्ट आईडी",
+      submittedBy: "{{time}} को भेजी गई · द्वारा {{name}}",
+      location: "स्थान",
+      approximateRegion: "अनुमानित क्षेत्र",
+      notes: "टिप्पणी",
+      siteType: "जगह का प्रकार",
+      severity: "गंभीरता",
+      garbageCategory: "कचरे की श्रेणी",
+      viewOnMaps: "Google Maps पर देखें",
+      upvote: "👁 मैं भी यह देख रहा हूँ",
+      upvoted: "✔ पुष्टि की गई",
+    },
+    form: {
+      intro: "क्या आपके आसपास कचरा जमा हो रहा है? एक पिन लगाइए।<br>कोई लॉगिन नहीं, कोई झंझट नहीं — बस नाम, जगह और फोटो।",
+      name: "आपका नाम",
+      namePlaceholder: "आपको क्या कहें",
+      district: "जिला",
+      area: "क्षेत्र",
+      selectDistrict: "जिला चुनें",
+      areaPlaceholder: "शहर / क्षेत्र / मोहल्ला",
+      specificLocation: "सटीक स्थान",
+      specificPlaceholder: "जैसे पुराने शिव मंदिर के पीछे",
+      gmapsPlaceholder: "Google Maps लिंक पेस्ट करें (वैकल्पिक)",
+      locationHelp: "मैप पर सटीक जगह नहीं मिल रही? ऊपर जगह लिखें या लिंक पेस्ट करें।",
+      useMyLocation: "📍 मेरी मौजूदा लोकेशन उपयोग करें",
+      findOnGoogleMaps: "या Google Maps पर खोजें",
+      dragPin: "सटीक स्थान के लिए पिन खींचें",
+      dragPinHint: "· हिलाने के लिए मैप टैप करें",
+      siteType: "जगह का प्रकार",
+      severity: "गंभीरता",
+      garbageCategory: "कचरे की श्रेणी",
+      notes: "टिप्पणी",
+      notesPlaceholder: "बदबू, अवधि, या जनता के लिए कोई खतरा…",
+      photos: "तस्वीरें",
+      tapToAddPhotos: "फोटो जोड़ने के लिए टैप करें",
+      photoFormats: "1 से 6 · JPG PNG WEBP",
+      anonymousNote: "कोई अकाउंट नहीं चाहिए<br>आपके नाम से आगे यह गुमनाम है",
+      submit: "रिपोर्ट भेजें",
+      checkingPhotos: "फोटो जांची जा रही हैं…",
+      uploading: "अपलोड हो रहा है…",
+      locating: "लोकेशन ली जा रही है…",
+      digipin: "डिजीपिन",
+      plusCode: "प्लस कोड",
+      photoCountSingular: "{{count}}/6 फोटो",
+      photoCountPlural: "{{count}}/6 फोटो",
+    },
+    success: {
+      title: "पिन हो गया।",
+      subtitle: "आपकी रिपोर्ट अब मैप पर दिख रही है।<br>देवभूमि को साफ रखें — इसे साझा करें।",
+      shareWhatsapp: "WhatsApp पर साझा करें",
+      reportAnother: "एक और जगह रिपोर्ट करें",
+      id: "आईडी: {{id}}",
+      karmaEarned: "+{{points}} कर्म",
+    },
+    karma: {
+      points: "कर्म अंक",
+      subtitle: "देवभूमि पर आपका शांत असर",
+      milestones: "उपलब्धियाँ",
+      recentActivity: "हाल की गतिविधि",
+      anonymousReporter: "गुमनाम रिपोर्टर",
+      weekStreak: "सप्ताह स्ट्रीक",
+      noActivity: "अभी कोई गतिविधि नहीं। अपनी पहली रिपोर्ट भेजें!",
+      unlockedReportsSingular: "{{count}} रिपोर्ट",
+      unlockedReportsPlural: "{{count}} रिपोर्ट",
+    },
+    site: {
+      road: "सड़क",
+      footpath: "फुटपाथ",
+      nalaDrain: "नाला / ड्रेन",
+      openPlot: "खाली प्लॉट",
+      nearTemple: "मंदिर के पास",
+      touristSpot: "पर्यटक स्थल",
+      riverBank: "नदी / नाला किनारा",
+      forestArea: "जंगल क्षेत्र",
+      market: "बाज़ार",
+      nearSchool: "स्कूल के पास",
+      nearHospital: "अस्पताल के पास",
+    },
+    severity: {
+      minor: "हल्का",
+      moderate: "मध्यम",
+      severe: "गंभीर",
+      blockingRoad: "सड़क अवरुद्ध",
+    },
+    categories: {
+      "Plastic waste": "प्लास्टिक",
+      "Food waste": "खाद्य कचरा",
+      Construction: "मलबा",
+      "Nala / Sewage": "नाला / सीवेज",
+      "Burning garbage": "जलता कचरा",
+      "E-waste": "ई-कचरा",
+      "Medical waste": "मेडिकल",
+      "Animal waste": "पशु",
+      "Mixed / general": "मिश्रित",
+      "Landslide debris": "भूस्खलन",
+      "Tourist litter": "पर्यटक कचरा",
+    },
+    levels: {
+      reporter: "रिपोर्टर",
+      guardian: "रक्षक",
+      watchdog: "निगरानीकर्ता",
+      champion: "चैंपियन",
+      legend: "पहाड़ी लीजेंड",
+    },
+    milestones: {
+      firstReporter: "पहला रिपोर्टर",
+      hillGuardian: "पहाड़ी रक्षक",
+      watchdog: "देवभूमि निगरानीकर्ता",
+      champion: "क्लीन हिमाचल चैंपियन",
+      legend: "पहाड़ी लीजेंड",
+    },
+    karmaLabels: {
+      firstEyes: "जमीन पर पहली नज़र",
+      anotherSpot: "एक और जगह दर्ज की",
+      expandingMap: "मैप का दायरा बढ़ाया",
+      districtWatchdog: "जिले की निगरानी की",
+      stillWatching: "नज़र बनाए रखी",
+      keptWatch: "जमीन पर नजर बनाए रखी",
+      newDistrict: "नया जिला कवर किया",
+      districtStreak: "एक जिले में 3 रिपोर्ट",
+      verifiedSpot: "एक जगह की पुष्टि की",
+    },
+    toasts: {
+      welcome1: "{{name}}पहाड़ों को साफ रखें 🏔️",
+      welcome2: "{{name}}हिमाचल देख रहा है। जो दिखे, रिपोर्ट करें 📍",
+      welcome3: "हर रिपोर्ट की गई जगह = साफ पहाड़ों की ओर एक और कदम 💚",
+      welcome4: "{{name}}वापसी पर स्वागत है। देवभूमि को साफ रखें 🌲",
+      loadReports: "रिपोर्ट लोड नहीं हो सकीं। Supabase टेबल, क्रेडेंशियल और कनेक्शन जांचें।",
+      gpsUnavailable: "इस डिवाइस पर GPS उपलब्ध नहीं है",
+      gpsPinned: "📍 GPS से लोकेशन पिन हो गई",
+      gpsFailed: "लोकेशन नहीं मिली — GPS अनुमति जांचें",
+      fillRequired: "अपना नाम, जिला और क्षेत्र भरें।",
+      addPhoto: "कम से कम एक फोटो जोड़ें।",
+      areaAbbr: "क्षेत्र संक्षेप जैसा लग रहा है — पूरा नाम लिखें।",
+      flaggedRemoved: "चिन्हित फोटो हटा दी गईं। बाकी फोटो जमा की जा रही हैं।",
+      noValidPhotos: "कोई मान्य फोटो नहीं बची। कृपया कम से कम एक फोटो जोड़ें।",
+      coordsFailed: "अनुमानित लोकेशन नहीं मिल सकी। कृपया क्षेत्र थोड़ा और स्पष्ट लिखें।",
+      submitFailed: "रिपोर्ट भेजना असफल रहा: {{message}}{{hint}}",
+      submit404Hint: " जांचें कि reports और report_photos Supabase में मौजूद हैं।",
+      unknownError: "अज्ञात त्रुटि",
+      districtAuto: "जिला अपने आप चुना गया: {{district}}",
+      alreadyConfirmed: "आप इस जगह की पहले ही पुष्टि कर चुके हैं",
+      confirmedSpot: "जगह की पुष्टि हुई — सत्यापन के लिए +2 कर्म",
+      stateHint: " क्या आपका मतलब \"{{value}}\" था?",
+      districtHint: " \"{{value}}\" जैसा कोई जिला चुनें।",
+      stateLooksCity: "स्टेट फ़ील्ड: \"{{value}}\" शहर जैसा लगता है।{{hint}}",
+      areaLooksState: "एरिया फ़ील्ड: \"{{value}}\" राज्य जैसा लगता है।{{hint}}",
+      photoFlagged: "फोटो {{index}}: {{issue}} — इसे हटाएँ या फिर से सबमिट करें।",
+      photoBlank: "यह खाली या एक ही रंग की तस्वीर लगती है",
+      photoNoDetail: "इस तस्वीर में कोई वास्तविक विवरण नहीं दिख रहा",
+      photoIllustration: "यह तस्वीर चित्र या आर्टवर्क जैसी लगती है — कृपया जगह की असली फोटो अपलोड करें",
+      photoPerson: "इस फोटो में कोई व्यक्ति दिख रहा है — कृपया लोगों की नहीं, जगह की फोटो अपलोड करें",
+      textInappropriate: "{{label}} में अनुचित भाषा है",
+      textUnreal: "{{label}} वास्तविक मान जैसा नहीं लगता",
+      notesGibberish: "टिप्पणी में अस्पष्ट शब्द दिख रहे हैं — कृपया साफ़ लिखें",
+    },
+    labels: {
+      reporterName: "रिपोर्टर का नाम",
+      state: "राज्य",
+      area: "क्षेत्र",
+      location: "स्थान",
+      notes: "टिप्पणी",
+    },
+  },
 };
 
-let currentLang = localStorage.getItem('ds_lang') || 'en';
+let currentLang = localStorage.getItem("ds_lang") || "en";
+let currentTheme = "light";
+let currentDetailId = null;
+let lastSuccessState = null;
+let mainTileLayer = null;
+let detailTileLayer = null;
+let pinTileLayer = null;
 
-function toggleLang() {
-  currentLang = currentLang === 'en' ? 'hi' : 'en';
-  localStorage.setItem('ds_lang', currentLang);
-  applyLang();
+function lookupTranslation(tree, path) {
+  return path.split(".").reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), tree);
+}
+
+function t(key, vars) {
+  const template =
+    lookupTranslation(TRANSLATIONS[currentLang], key) ??
+    lookupTranslation(TRANSLATIONS.en, key) ??
+    key;
+  if (typeof template !== "string") return template;
+  return template.replace(/\{\{(\w+)\}\}/g, (_, name) =>
+    vars && vars[name] !== undefined ? vars[name] : "",
+  );
+}
+
+function getUiLocale() {
+  return currentLang === "hi" ? "hi-IN" : "en-IN";
+}
+
+function translateCategory(key) {
+  return t("categories." + key);
+}
+
+function translateSiteType(value) {
+  const map = {
+    Road: "site.road",
+    Footpath: "site.footpath",
+    "Nala / Drain": "site.nalaDrain",
+    "Open plot": "site.openPlot",
+    "Near temple": "site.nearTemple",
+    "Tourist spot": "site.touristSpot",
+    "River / Nala bank": "site.riverBank",
+    "Forest area": "site.forestArea",
+    Market: "site.market",
+    "Near school": "site.nearSchool",
+    "Near hospital": "site.nearHospital",
+  };
+  return map[value] ? t(map[value]) : value;
+}
+
+function translateSeverity(value) {
+  const map = {
+    Minor: "severity.minor",
+    Moderate: "severity.moderate",
+    Severe: "severity.severe",
+    "Blocking road": "severity.blockingRoad",
+  };
+  return map[value] ? t(map[value]) : value;
+}
+
+function translateLevelTitle(key) {
+  return t("levels." + key);
+}
+
+function translateMilestoneTitle(title) {
+  const map = {
+    "First Reporter": "milestones.firstReporter",
+    "Hill Guardian": "milestones.hillGuardian",
+    "Devbhoomi Watchdog": "milestones.watchdog",
+    "Clean Himachal Champion": "milestones.champion",
+    "Pahadi Legend": "milestones.legend",
+  };
+  return map[title] ? t(map[title]) : title;
+}
+
+function translateLogLabel(label) {
+  const map = {
+    "First eyes on the ground": "karmaLabels.firstEyes",
+    "Another spot mapped": "karmaLabels.anotherSpot",
+    "Expanding the map": "karmaLabels.expandingMap",
+    "District watchdog": "karmaLabels.districtWatchdog",
+    "Still watching": "karmaLabels.stillWatching",
+    "Kept watch on the ground": "karmaLabels.keptWatch",
+    "Covered a new district": "karmaLabels.newDistrict",
+    "3 reports in one district": "karmaLabels.districtStreak",
+    "Verified a spot": "karmaLabels.verifiedSpot",
+  };
+  return map[label] ? t(map[label]) : label;
+}
+
+function formatReportCount(count) {
+  return count === 1
+    ? t("feed.reportSingular", { count })
+    : t("feed.reportPlural", { count });
+}
+
+function reporterByline(name) {
+  return currentLang === "hi" ? "द्वारा " + name : "by " + name;
+}
+
+function createTileLayer() {
+  const isDark = currentTheme === "dark";
+  const url = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  return L.tileLayer(url, {
+    attribution: "© OpenStreetMap © CARTO",
+    subdomains: "abcd",
+    maxZoom: 19,
+  });
+}
+
+function refreshMapTheme() {
+  if (map && mainTileLayer) {
+    map.removeLayer(mainTileLayer);
+    mainTileLayer = createTileLayer().addTo(map);
+  }
+  if (detMap && detailTileLayer) {
+    detMap.removeLayer(detailTileLayer);
+    detailTileLayer = createTileLayer().addTo(detMap);
+  }
+  if (pinMap && pinTileLayer) {
+    pinMap.removeLayer(pinTileLayer);
+    pinTileLayer = createTileLayer().addTo(pinMap);
+  }
+}
+
+function updateThemeMeta() {
+  const meta = document.getElementById("theme-color-meta");
+  if (meta) meta.setAttribute("content", currentTheme === "dark" ? "#141C1A" : "#FFFFFF");
+}
+
+function updateThemeToggle() {
+  const toggle = document.getElementById("theme-toggle");
+  const label = document.getElementById("theme-toggle-label");
+  if (label) {
+    label.textContent =
+      currentTheme === "dark" ? t("nav.lightMode") : t("nav.darkMode");
+  }
+  if (toggle) {
+    toggle.setAttribute(
+      "aria-label",
+      currentTheme === "dark" ? t("nav.lightMode") : t("nav.darkMode"),
+    );
+  }
+}
+
+function applyTheme(theme, persist) {
+  currentTheme = theme;
+  document.documentElement.dataset.theme = theme;
+  document.body.dataset.theme = theme;
+  if (persist) localStorage.setItem("ds_theme", theme);
+  updateThemeMeta();
+  updateThemeToggle();
+  refreshMapTheme();
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme === "dark" ? "light" : "dark", true);
+}
+
+function applyStaticTranslations() {
+  document.documentElement.lang = currentLang === "hi" ? "hi" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nHtml);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    el.setAttribute("placeholder", t(el.dataset.i18nPlaceholder));
+  });
+  const langBtn = document.getElementById("lang-toggle");
+  if (langBtn) langBtn.textContent = currentLang === "en" ? "हिंदी" : "English";
 }
 
 function applyLang() {
-  const L = LABELS[currentLang] || LABELS.en;
-  // Form labels
-  document.querySelectorAll('.fl-label').forEach(el => {
-    const text = el.textContent.trim().toLowerCase();
-    if (text.startsWith('your name') || text.startsWith('\u0906\u092A\u0915\u093E')) el.innerHTML = L.name + ' <span class="req">*</span>';
-    if (text.startsWith('notes') || text.startsWith('\u091F\u093F\u092A')) el.innerHTML = L.notes + ' <span class="opt">optional</span>';
-    if (text.startsWith('photos') || text.startsWith('\u0924\u0938\u094D\u0935')) el.innerHTML = L.photos + ' <span class="req">*</span>';
-  });
-  // Submit button
-  const subBtn = document.querySelector('.sub-btn');
-  if (subBtn && (subBtn.textContent === 'Submit Report' || subBtn.textContent === '\u0930\u093F\u092A\u094B\u0930\u094D\u091F \u092D\u0947\u091C\u0947\u0902')) {
-    subBtn.textContent = L.submit;
+  applyStaticTranslations();
+  populateDistrictDropdowns();
+  buildDistrictFilter();
+  buildCatFilter();
+  applyFilters();
+  renderKarmaPanel();
+  renderPreviews();
+  if (currentDetailId) {
+    const detail = reports.find((r) => r.id === currentDetailId);
+    if (detail) renderDetail(detail);
   }
-  // Karma labels
-  const kpLabel = document.querySelector('.karma-points-label');
-  if (kpLabel) kpLabel.textContent = L.karma;
-  const kmTitle = document.querySelector('.karma-milestone-title');
-  if (kmTitle) kmTitle.textContent = L.milestones;
-  const klTitle = document.querySelector('.karma-log-title');
-  if (klTitle) klTitle.textContent = L.activity;
-  // Toggle button text
-  const langBtn = document.getElementById('lang-toggle');
-  if (langBtn) langBtn.textContent = currentLang === 'en' ? '\u0939\u093F\u0902\u0926\u0940' : 'English';
+  if (lastSuccessState) renderSuccessState();
+  updateThemeToggle();
+}
+
+function toggleLang() {
+  currentLang = currentLang === "en" ? "hi" : "en";
+  localStorage.setItem("ds_lang", currentLang);
+  applyLang();
 }
 
 /* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
@@ -1931,7 +2500,7 @@ function getUpvotes() {
 function upvoteReport(reportId) {
   const upvotes = getUpvotes();
   if (upvotes[reportId]) {
-    toast('You already confirmed this spot', false);
+    toast(t("toasts.alreadyConfirmed"), false);
     return;
   }
   upvotes[reportId] = Date.now();
@@ -1940,9 +2509,9 @@ function upvoteReport(reportId) {
   const btn = document.getElementById('upvote-' + reportId);
   if (btn) {
     btn.classList.add('upvoted');
-    btn.innerHTML = '\u2714 Confirmed';
+    btn.innerHTML = t("detail.upvoted");
   }
-  toast('Spot confirmed \u2014 +2 karma for verification', false);
+  toast(t("toasts.confirmedSpot"), false);
   // Award karma for confirming
   const identity = getReporterIdentity();
   identity.totalKarma = (identity.totalKarma || 0) + 2;
