@@ -864,11 +864,6 @@ async function submitReport() {
     textErrors.forEach((msg) => toast(msg, true));
     return;
   }
-  if (looksLikeAbbr(document.getElementById("rstate").value.trim()))
-    toast(
-      "State looks like an abbreviation — write the full state name.",
-      true,
-    );
   if (looksLikeAbbr(document.getElementById("rarea").value.trim()))
     toast("Area looks like an abbreviation — write the full area name.", true);
 
