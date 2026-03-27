@@ -171,6 +171,13 @@ let reports = [],
   detMap = null,
   curView = "map",
   prevPage = "pg-feed";
+const HP_FALLBACK_BOUNDS = [
+  [30.377701, 75.594723],
+  [33.256636, 79.008915],
+];
+let districtBoundaryLayer = null,
+  stateBoundaryLayer = null,
+  himachalBounds = null;
 const PAGES = ["pg-feed", "pg-detail", "pg-report", "pg-karma"];
 
 function goPage(id, from) {
@@ -239,14 +246,95 @@ function setFeedLoading(on) {
   if (el) el.style.display = on ? "flex" : "none";
 }
 
-function initMap() {
-  map = L.map("map", { zoomControl: true, scrollWheelZoom: true }).setView(
-    [31.95, 77.10],
-    8,
-  );
-  map.setMaxBounds([[29.5, 74.5], [34.0, 80.0]]);
-  map.options.minZoom = 7;
+function getMapBoundaryStyles() {
+  const styles = getComputedStyle(document.documentElement);
+  const stateColor = styles.getPropertyValue("--gn").trim() || "#1B7A3D";
+  const districtColor =
+    styles.getPropertyValue("--b3").trim() ||
+    (currentTheme === "dark" ? "#56756B" : "#B8B3AB");
+  return {
+    state: {
+      color: stateColor,
+      weight: currentTheme === "dark" ? 3 : 3.25,
+      opacity: currentTheme === "dark" ? 0.95 : 0.9,
+      lineJoin: "round",
+      lineCap: "round",
+      fillOpacity: 0,
+      interactive: false,
+    },
+    district: {
+      color: districtColor,
+      weight: currentTheme === "dark" ? 1.05 : 0.95,
+      opacity: currentTheme === "dark" ? 0.72 : 0.82,
+      lineJoin: "round",
+      lineCap: "round",
+      fillOpacity: 0,
+      interactive: false,
+    },
+  };
+}
+
+function refreshBoundaryTheme() {
+  const styles = getMapBoundaryStyles();
+  if (districtBoundaryLayer) districtBoundaryLayer.setStyle(styles.district);
+  if (stateBoundaryLayer) {
+    stateBoundaryLayer.setStyle(styles.state);
+    stateBoundaryLayer.bringToFront();
+  }
+}
+
+function applyHimachalFraming() {
+  if (!map) return;
+  const bounds = himachalBounds || L.latLngBounds(HP_FALLBACK_BOUNDS);
+  map.fitBounds(bounds, {
+    padding: [26, 26],
+    animate: false,
+    maxZoom: 8.5,
+  });
+  map.setMaxBounds(bounds.pad(0.2));
+  map.setMinZoom(7.25);
+}
+
+async function loadHimachalBoundaries() {
+  try {
+    const response = await fetch("himachal-boundaries.geojson", {
+      cache: "force-cache",
+    });
+    if (!response.ok) throw new Error("boundary fetch failed");
+    const data = await response.json();
+    const styles = getMapBoundaryStyles();
+    districtBoundaryLayer = L.geoJSON(data, {
+      filter: (feature) => feature?.properties?.kind === "district",
+      style: styles.district,
+      interactive: false,
+    }).addTo(map);
+    stateBoundaryLayer = L.geoJSON(data, {
+      filter: (feature) => feature?.properties?.kind === "state-outline",
+      style: styles.state,
+      interactive: false,
+    }).addTo(map);
+    const outlineBounds = stateBoundaryLayer.getBounds();
+    if (outlineBounds.isValid()) himachalBounds = outlineBounds;
+    applyHimachalFraming();
+  } catch (error) {
+    console.warn("[DumpSpot] Himachal boundary overlay unavailable:", error);
+    himachalBounds = L.latLngBounds(HP_FALLBACK_BOUNDS);
+    applyHimachalFraming();
+  }
+}
+
+async function initMap() {
+  map = L.map("map", {
+    zoomControl: true,
+    scrollWheelZoom: true,
+    zoomSnap: 0.25,
+    zoomDelta: 0.5,
+    maxBoundsViscosity: 0.9,
+  }).setView([31.95, 77.10], 8);
   mainTileLayer = createTileLayer().addTo(map);
+  himachalBounds = L.latLngBounds(HP_FALLBACK_BOUNDS);
+  applyHimachalFraming();
+  await loadHimachalBoundaries();
   mLayer = L.layerGroup().addTo(map);
   buildDistrictFilter();
   buildCatFilter();
@@ -2406,6 +2494,7 @@ function refreshMapTheme() {
     map.removeLayer(mainTileLayer);
     mainTileLayer = createTileLayer().addTo(map);
   }
+  refreshBoundaryTheme();
   if (detMap && detailTileLayer) {
     detMap.removeLayer(detailTileLayer);
     detailTileLayer = createTileLayer().addTo(detMap);
