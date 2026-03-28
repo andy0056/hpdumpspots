@@ -165,6 +165,184 @@ function looksLikeAbbr(str) {
   return /^[A-Z0-9&-]{2,5}$/.test(s);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char],
+  );
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function safeMapsUrl(rawUrl) {
+  if (!rawUrl) return "";
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
+    const allowed =
+      host === "maps.app.goo.gl" ||
+      host === "google.com" ||
+      host.endsWith(".google.com");
+    if (url.protocol !== "https:" || !allowed) return "";
+    return url.toString();
+  } catch (error) {
+    return "";
+  }
+}
+
+function getSubmitterFingerprint() {
+  const key = "ds_submitter_fingerprint";
+  let fingerprint = localStorage.getItem(key);
+  if (!fingerprint) {
+    fingerprint =
+      window.crypto && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `ds-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(key, fingerprint);
+  }
+  return fingerprint;
+}
+
+let challengeToken = "";
+let challengeMessage = "";
+let turnstileWidgetId = null;
+
+function getChallengeElements() {
+  return {
+    wrap: document.getElementById("challenge-wrap"),
+    copy: document.getElementById("challenge-copy"),
+    box: document.getElementById("turnstile-box"),
+  };
+}
+
+function renderTurnstileIfNeeded() {
+  if (!window.TURNSTILE_SITE_KEY || !window.turnstile) return;
+  const { box } = getChallengeElements();
+  if (!box || turnstileWidgetId !== null) return;
+  turnstileWidgetId = window.turnstile.render(box, {
+    sitekey: window.TURNSTILE_SITE_KEY,
+    theme: currentTheme === "dark" ? "dark" : "light",
+    callback(token) {
+      challengeToken = token;
+      const { copy } = getChallengeElements();
+      if (copy) copy.textContent = t("form.challengeVerified");
+    },
+    "expired-callback"() {
+      challengeToken = "";
+    },
+    "error-callback"() {
+      challengeToken = "";
+    },
+  });
+}
+
+function resetChallenge() {
+  challengeToken = "";
+  challengeMessage = "";
+  const { wrap, copy } = getChallengeElements();
+  if (wrap) wrap.style.display = "none";
+  if (copy) copy.textContent = t("form.challengeCopy");
+  if (turnstileWidgetId !== null && window.turnstile) {
+    window.turnstile.reset(turnstileWidgetId);
+  }
+}
+
+function showChallenge(message) {
+  challengeMessage = message || t("form.challengeCopy");
+  const { wrap, copy } = getChallengeElements();
+  if (wrap) wrap.style.display = "block";
+  if (copy) copy.textContent = challengeMessage;
+  renderTurnstileIfNeeded();
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.message || data.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
+
+async function requestSignedUploads(files) {
+  return postJson("/api/uploads/sign", {
+    submitterFingerprint: getSubmitterFingerprint(),
+    challengeToken,
+    files: files.map((file) => ({
+      contentType: file.type || "image/webp",
+      sizeBytes: file.size,
+    })),
+  });
+}
+
+async function uploadSignedFiles(bucket, signedUploads, files) {
+  const uploads = [];
+  for (let index = 0; index < signedUploads.length; index += 1) {
+    const signed = signedUploads[index];
+    const file = files[index];
+    const clientFlags =
+      (file && file._clientFlags && file._clientFlags.length)
+        ? file._clientFlags
+        : [];
+    const { error } = await getDb()
+      .storage.from(bucket)
+      .uploadToSignedUrl(signed.path, signed.token, file, {
+        contentType: file.type || signed.contentType || "image/webp",
+        upsert: false,
+      });
+    if (error) throw error;
+    uploads.push({
+      path: signed.path,
+      clientFlags,
+    });
+  }
+  return uploads;
+}
+
+function serverErrorMessage(errorCode) {
+  const map = {
+    invalid_reporter: t("toasts.invalidReporter"),
+    invalid_district: t("toasts.invalidDistrict"),
+    invalid_area: t("toasts.invalidArea"),
+    invalid_specific: t("toasts.invalidSpecific"),
+    invalid_notes: t("toasts.invalidNotes"),
+    invalid_file_count: t("toasts.tooManyPhotos"),
+    invalid_file_type: t("toasts.invalidImageType"),
+    invalid_file_size: t("toasts.photoTooLarge"),
+    invalid_coordinates: t("toasts.invalidCoordinates"),
+    invalid_gmaps_link: t("toasts.invalidMapLink"),
+    missing_uploads: t("toasts.addPhoto"),
+    too_many_photos: t("toasts.tooManyPhotos"),
+    invalid_upload_path: t("toasts.uploadSessionExpired"),
+    upload_missing: t("toasts.uploadSessionExpired"),
+    oversized_upload: t("toasts.photoTooLarge"),
+    invalid_image_type: t("toasts.invalidImageType"),
+    invalid_image_dimensions: t("toasts.invalidImageDimensions"),
+    oversized_image_dimensions: t("toasts.invalidImageDimensions"),
+    missing_fingerprint: t("toasts.retrySubmit"),
+    daily_limit_reached: t("toasts.dailyLimitReached"),
+  };
+  return map[errorCode] || "";
+}
+
 let reports = [],
   map,
   mLayer,
@@ -218,14 +396,15 @@ async function fetchReports() {
   setFeedLoading(true);
   try {
     const { data, error } = await getDb()
-      .from("reports")
-      .select("*, report_photos(url, position)")
+      .from("public_report_feed")
+      .select("*")
       .order("ts", { ascending: false })
       .range(0, 199);
     if (error) throw error;
     reports = data.map((r) => ({
       ...r,
-      photos: (r.report_photos || [])
+      photos: (r.photos || [])
+        .slice()
         .sort((a, b) => a.position - b.position)
         .map((p) => p.url),
     }));
@@ -368,16 +547,26 @@ function renderMarkers(data) {
 }
 
 function buildPopHTML(r) {
+  const firstPhoto = r.photos && r.photos.length ? String(r.photos[0]) : "";
+  const safeSpecific = escapeHtml(r.specific || "");
+  const safeDistrictLabel = escapeHtml(
+    r.district
+      ? r.district + (r.area && r.area !== r.district ? ", " + r.area : "")
+      : r.area,
+  );
+  const safeState = escapeHtml(r.state || "");
+  const safeNotes = escapeHtml(r.notes || "");
+  const safeReporter = escapeHtml(reporterByline(r.reporter || ""));
+  const safeTime = escapeHtml(fmtTs(r.ts));
   const imgEl =
-    r.photos && r.photos.length
-      ? `<div class="pu-img"><img src="${r.photos[0]}"></div>`
+    firstPhoto
+      ? `<div class="pu-img"><img src="${escapeAttr(firstPhoto)}" alt=""></div>`
       : `<div class="pu-img">${ICONS.photo}</div>`;
   const cats = (r.cats || [])
     .map((c) => `<span class="pu-cat">${catIcon(c)}<span>${translateCategory(c)}</span></span>`)
     .join("");
-  const districtLabel = r.district ? r.district + (r.area && r.area !== r.district ? ', ' + r.area : '') : r.area;
   const badge = getReporterBadgeHTML(r.reporter);
-  return `<div>${imgEl}<div class="pu-body"><div class="pu-loc">${r.specific}</div><div class="pu-area">${districtLabel}, ${r.state}</div>${cats ? `<div class="pu-cats">${cats}</div>` : ""}${r.notes ? `<div style="font-size:.72rem;color:var(--mu);margin-top:.28rem;line-height:1.4;">${r.notes}</div>` : ""}<div class="pu-meta"><span class="pu-by">${reporterByline(r.reporter)}${badge}</span><span class="pu-date">${fmtTs(r.ts)}</span></div><button class="pu-link" id="pu-btn-${r.id}">${t("feed.viewFull")}</button></div></div>`;
+  return `<div>${imgEl}<div class="pu-body"><div class="pu-loc">${safeSpecific}</div><div class="pu-area">${safeDistrictLabel}, ${safeState}</div>${cats ? `<div class="pu-cats">${cats}</div>` : ""}${r.notes ? `<div style="font-size:.72rem;color:var(--mu);margin-top:.28rem;line-height:1.4;">${safeNotes}</div>` : ""}<div class="pu-meta"><span class="pu-by">${safeReporter}${badge}</span><span class="pu-date">${safeTime}</span></div><button class="pu-link" id="pu-btn-${r.id}">${t("feed.viewFull")}</button></div></div>`;
 }
 
 function getReporterBadgeHTML(name) {
@@ -425,6 +614,20 @@ function renderLCard(r) {
   const chips = (r.cats || [])
     .map((c) => `<span class="chip">${catIcon(c)}<span>${translateCategory(c)}</span></span>`)
     .join("");
+  const safeSpecific = escapeHtml(r.specific || "");
+  const safeAreaLine = escapeHtml(
+    (r.district ? r.district + (r.area && r.area !== r.district ? ", " + r.area : "") : r.area) +
+      ", " +
+      (r.state || ""),
+  );
+  const safeReporter = escapeHtml(reporterByline(r.reporter || ""));
+  const safeTime = escapeHtml(
+    new Date(r.ts).toLocaleTimeString(getUiLocale(), {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }),
+  );
   const timeStr = new Date(r.ts).toLocaleTimeString(getUiLocale(), {
     hour: "2-digit",
     minute: "2-digit",
@@ -432,13 +635,13 @@ function renderLCard(r) {
   });
   return `<div class="lcard ${sc}" onclick="openDetail('${r.id}')">
     <div class="lcard-main">
-      <div class="lcard-loc"><span class="lcard-loc-inner">${r.specific}</span></div>
-      <div class="lcard-area">${r.district ? r.district + (r.area && r.area !== r.district ? ', ' + r.area : '') : r.area}, ${r.state}</div>
+      <div class="lcard-loc"><span class="lcard-loc-inner">${safeSpecific}</span></div>
+      <div class="lcard-area">${safeAreaLine}</div>
       ${chips ? `<div class="lcard-chips">${chips}</div>` : ""}
     </div>
     <div class="lcard-meta">
-      <span class="lcard-by">${reporterByline(r.reporter)}${getReporterBadgeHTML(r.reporter)}</span>
-      <span class="lcard-time">${timeStr}</span>
+      <span class="lcard-by">${safeReporter}${getReporterBadgeHTML(r.reporter)}</span>
+      <span class="lcard-time">${safeTime}</span>
     </div>
   </div>`;
 }
@@ -578,13 +781,19 @@ function sizeViews() {
 }
 
 function renderDetail(r) {
+  const safeSpecific = escapeHtml(r.specific || "");
+  const safeArea = escapeHtml(r.area || "");
+  const safeDistrict = escapeHtml(r.district || "");
+  const safeState = escapeHtml(r.state || "");
+  const safeNotes = escapeHtml(r.notes || "");
+  const safeMapsLink = safeMapsUrl(r.gmaps_link || "");
   let photos = "";
   if (r.photos && r.photos.length) {
     const n = Math.min(r.photos.length, 6);
     const cls = ["", "n1", "n2", "n3", "n4", "n5", "n6"][n] || "n6";
     photos = `<div class="det-photos ${cls}">${r.photos
       .slice(0, 6)
-      .map((p, i) => `<img class="det-photo dp${i}" src="${p}">`)
+      .map((p, i) => `<img class="det-photo dp${i}" src="${escapeAttr(p)}" alt="">`)
       .join("")}</div>`;
   } else {
     photos = `<div class="det-nophoto">${ICONS.photo}</div>`;
@@ -601,18 +810,18 @@ function renderDetail(r) {
   document.getElementById("det-content").innerHTML = `
     ${photos}
     <div class="det-id-badge">${t("detail.reportId")} <span>${r.id}</span></div>
-    <div class="det-area">${r.district ? r.district : r.area}, ${r.state}${r.district && r.area && r.area !== r.district ? ' <span style="color:var(--mu);font-size:.75em;">&middot; ' + r.area + '</span>' : ''}</div>
-    <div class="det-loc">${r.specific}</div>
-    <div class="det-timestamp">${t("detail.submittedBy", { time: fmtTs(r.ts), name: r.reporter })}${getReporterBadgeHTML(r.reporter)}</div>
+    <div class="det-area">${safeDistrict || safeArea}, ${safeState}${r.district && r.area && r.area !== r.district ? ' <span style="color:var(--mu);font-size:.75em;">&middot; ' + safeArea + '</span>' : ''}</div>
+    <div class="det-loc">${safeSpecific}</div>
+    <div class="det-timestamp">${escapeHtml(t("detail.submittedBy", { time: fmtTs(r.ts), name: r.reporter }))}${getReporterBadgeHTML(r.reporter)}</div>
     <div class="form-grid" style="margin-top:1.25rem;">
       <div class="form-col">
         <div class="det-sec-label sl-loc" style="margin-bottom:.45rem;">${t("detail.location")}</div>
         <div style="font-family:var(--fb);font-size:.85rem;color:var(--gn);font-weight:500;">
-          ${r.state} &middot; ${r.area}
+          ${safeState} &middot; ${safeArea}
           ${(!r.specific || r.specific === r.area) ? '<span style="font-size:0.65rem;font-weight:400;color:var(--mu);margin-left:6px;background:var(--s2);padding:2px 6px;border-radius:4px;">' + t("detail.approximateRegion") + '</span>' : ''}
         </div>
-        ${r.gmaps_link ? `<div style="margin-top:.45rem;"><a href="${r.gmaps_link}" target="_blank" style="font-family:var(--fm);font-size:.65rem;color:var(--pk);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>${t("detail.viewOnMaps")}</a></div>` : ''}
-        ${r.notes ? `<div class="det-sec-label sl-loc" style="margin-top:1.1rem;margin-bottom:.45rem;">${t("detail.notes")}</div><div class="det-notes">${r.notes}</div>` : ""}
+        ${safeMapsLink ? `<div style="margin-top:.45rem;"><a href="${escapeAttr(safeMapsLink)}" target="_blank" rel="noopener noreferrer" style="font-family:var(--fm);font-size:.65rem;color:var(--pk);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>${t("detail.viewOnMaps")}</a></div>` : ''}
+        ${r.notes ? `<div class="det-sec-label sl-loc" style="margin-top:1.1rem;margin-bottom:.45rem;">${t("detail.notes")}</div><div class="det-notes">${safeNotes}</div>` : ""}
       </div>
       <div class="form-col">
         ${types ? `<div class="det-sec-label sl-site" style="margin-bottom:.45rem;">${t("detail.siteType")}</div><div class="det-tags" style="margin-bottom:.85rem;">${types}</div>` : ""}
@@ -720,12 +929,21 @@ async function searchLoc(q) {
         '<div class="loc-searching">' + t("feed.noResults") + '</div>';
       return;
     }
-    box.innerHTML = data
-      .map(
-        (item) =>
-          `<div class="loc-result-item" onclick="pickLoc('${item.display_name.replace(/'/g, "\\'")}',${item.lat},${item.lon})">${item.display_name.split(",")[0]}<small>${item.display_name}</small></div>`,
-      )
-      .join("");
+    box.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    data.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "loc-result-item";
+      row.textContent = item.display_name.split(",")[0];
+      const small = document.createElement("small");
+      small.textContent = item.display_name;
+      row.appendChild(small);
+      row.addEventListener("click", () => {
+        pickLoc(item.display_name, item.lat, item.lon);
+      });
+      fragment.appendChild(row);
+    });
+    box.appendChild(fragment);
   } catch (e) {
     box.innerHTML =
       '<div class="loc-searching">' + t("feed.searchUnavailable") + '</div>';
@@ -859,6 +1077,7 @@ function compressImage(file) {
 
 const upFiles = [];
 const flaggedImageIndices = new Set();
+let stagedUploads = null;
 
 function initUpload() {
   const ua = document.getElementById("uparea"),
@@ -880,6 +1099,7 @@ function initUpload() {
 }
 
 async function addFiles(fs) {
+  stagedUploads = null;
   const eligible = fs
     .filter((f) => f.type.startsWith("image/"))
     .slice(0, 6 - upFiles.length);
@@ -912,6 +1132,7 @@ function renderPreviews() {
     btn.textContent = "✕";
     btn.onclick = () => {
       upFiles.splice(i, 1);
+      stagedUploads = null;
       renderPreviews();
     };
     d.appendChild(img);
@@ -960,6 +1181,13 @@ async function submitReport() {
   btn.textContent = t("form.checkingPhotos");
   btn.disabled = true;
   const imgResults = await checkAllImages(upFiles);
+  upFiles.forEach((file) => {
+    file._clientFlags = [];
+  });
+  imgResults.forEach((result) => {
+    const file = upFiles[result.index - 1];
+    if (file) file._clientFlags = result.issues.slice();
+  });
   const newFlags = imgResults.filter(
     (r) => !flaggedImageIndices.has(r.index - 1),
   );
@@ -1003,20 +1231,6 @@ async function submitReport() {
 
   btn.textContent = t("form.uploading");
   try {
-    const id = genId();
-    const photoUrls = [];
-    for (let i = 0; i < upFiles.length; i++) {
-      const file = upFiles[i];
-      const path = `${id}/${i + 1}.webp`;
-      const { error: upErr } = await getDb()
-        .storage.from("report-photos")
-        .upload(path, file, { contentType: "image/webp", upsert: false });
-      if (upErr) throw upErr;
-      const { data: urlData } = getDb()
-        .storage.from("report-photos")
-        .getPublicUrl(path);
-      photoUrls.push({ url: urlData.publicUrl, position: i + 1 });
-    }
     let resolvedLat = locLat;
     let resolvedLng = locLng;
     if (resolvedLat === null || resolvedLng === null) {
@@ -1040,61 +1254,75 @@ async function submitReport() {
       btn.disabled = false;
       return;
     }
-    
-    // Auto-generate a GMaps link from coords if the user didn't paste one manually
+
+    const uploaded =
+      stagedUploads && stagedUploads.length === upFiles.length
+        ? stagedUploads
+        : await (async () => {
+            const signed = await requestSignedUploads(upFiles);
+            return uploadSignedFiles(signed.bucket, signed.uploads, upFiles);
+          })();
+    stagedUploads = uploaded;
     const finalGmapsLink = gmapsLink || `https://www.google.com/maps/place/${resolvedLat},${resolvedLng}`;
-    
-    if (!locLat || !locLng) initPinMap(resolvedLat, resolvedLng);
     const codes = getLocationCode(resolvedLat, resolvedLng);
-    const { error: repErr } = await getDb()
-      .from("reports")
-      .insert({
-        id,
+    const reportResult = await postJson("/api/reports", {
+      submitterFingerprint: getSubmitterFingerprint(),
+      challengeToken,
+      uploads: uploaded,
+      report: {
         reporter: name,
-        state,
         district,
         area,
         specific,
         type: selTags.type,
         cats: selCats,
         sev: selTags.sev,
-        notes: document.getElementById("rnotes").value.trim(),
+        notes,
         lat: resolvedLat,
         lng: resolvedLng,
         digipin: codes.digipin || null,
         pluscode: codes.pluscode || null,
         gmaps_link: finalGmapsLink,
-        ts: new Date().toISOString(),
-      });
-    if (repErr) throw repErr;
-    const { error: photoErr } = await getDb()
-      .from("report_photos")
-      .insert(
-        photoUrls.map((p) => ({
-          report_id: id,
-          url: p.url,
-          position: p.position,
-        })),
-      );
-    if (photoErr) throw photoErr;
+      },
+    });
+
+    resetChallenge();
+    stagedUploads = null;
     await fetchReports();
     saveReporterIdentity(name);
-    const karmaResult = awardKarma(district);
+    const karmaResult =
+      reportResult.status === "published"
+        ? awardKarma(district)
+        : { points: 0, labels: [], total: getReporterIdentity().totalKarma || 0 };
     document.getElementById("form-screen").style.display = "none";
     document.getElementById("succ").classList.add("on");
-    lastSuccessState = { id, karmaResult };
+    lastSuccessState = { id: reportResult.id, karmaResult, status: reportResult.status };
     renderSuccessState();
-    window._lastReportId = id;
+    window._lastReportId = reportResult.id;
     window._lastReportSpecific = specific;
     window._lastReportDistrict = district;
   } catch (e) {
+    if (
+      e.data &&
+      ["invalid_upload_path", "upload_missing"].includes(e.data.error)
+    ) {
+      stagedUploads = null;
+    }
+    if (e.status === 429 && e.data && e.data.challengeRequired) {
+      showChallenge(e.data.message || t("form.challengeCopy"));
+      toast(t("toasts.challengeNeeded"), true);
+      btn.textContent = t("form.submit");
+      btn.disabled = false;
+      return;
+    }
+    const knownMessage = e.data && e.data.error ? serverErrorMessage(e.data.error) : "";
     const hint =
       e && String(e.message || "").includes("404")
         ? t("toasts.submit404Hint")
         : "";
     toast(
       t("toasts.submitFailed", {
-        message: e.message || t("toasts.unknownError"),
+        message: knownMessage || e.message || t("toasts.unknownError"),
         hint,
       }),
       true,
@@ -1116,6 +1344,7 @@ function resetForm() {
   Object.keys(selTags).forEach((k) => (selTags[k] = []));
   selCats.length = 0;
   upFiles.length = 0;
+  stagedUploads = null;
   locLat = null;
   locLng = null;
   flaggedImageIndices.clear();
@@ -1129,6 +1358,7 @@ function resetForm() {
     pinMarker = null;
   }
   renderPreviews();
+  resetChallenge();
   document.getElementById("form-screen").style.display = "";
   document.getElementById("succ").classList.remove("on");
   lastSuccessState = null;
@@ -1878,8 +2108,20 @@ function shareOnWhatsApp() {
 function renderSuccessState() {
   if (!lastSuccessState) return;
   document.getElementById("succ-id").textContent = t("success.id", { id: lastSuccessState.id });
+  const title = document.querySelector("#succ h2");
+  const subtitle = document.querySelector("#succ > p");
+  const shareButton = document.getElementById("share-wa-btn");
+  const isPending = lastSuccessState.status === "pending";
+  if (title) title.textContent = isPending ? t("success.pendingTitle") : t("success.title");
+  if (subtitle) subtitle.innerHTML = isPending ? t("success.pendingSubtitle") : t("success.subtitle");
+  if (shareButton) shareButton.style.display = isPending ? "none" : "";
   const karmaEl = document.getElementById("succ-karma");
-  if (karmaEl && lastSuccessState.karmaResult.points > 0) {
+  if (karmaEl && isPending) {
+    karmaEl.innerHTML =
+      '<div class="karma-earned-label">' +
+      t("success.pendingNote") +
+      "</div>";
+  } else if (karmaEl && lastSuccessState.karmaResult.points > 0) {
     karmaEl.innerHTML =
       '<div class="karma-earned">' +
       t("success.karmaEarned", { points: lastSuccessState.karmaResult.points }) +
@@ -2051,6 +2293,8 @@ const TRANSLATIONS = {
       submit: "Submit Report",
       checkingPhotos: "Checking photos…",
       uploading: "Uploading…",
+      challengeCopy: "Too many reports from this network. Please verify you are human to continue.",
+      challengeVerified: "Verification complete. Submit once more to continue.",
       locating: "Locating…",
       digipin: "DigiPin",
       plusCode: "Plus Code",
@@ -2060,6 +2304,9 @@ const TRANSLATIONS = {
     success: {
       title: "Pinned.",
       subtitle: "Your report is live on the map.<br>Keep Devbhoomi clean — share it.",
+      pendingTitle: "Received.",
+      pendingSubtitle: "Your report is in review before it goes live.<br>Thank you for documenting what you saw.",
+      pendingNote: "This report will appear after a quick safety review.",
       shareWhatsapp: "Share on WhatsApp",
       reportAnother: "Report another spot",
       id: "ID: {{id}}",
@@ -2166,6 +2413,21 @@ const TRANSLATIONS = {
       textInappropriate: "{{label}} contains inappropriate language",
       textUnreal: "{{label}} does not look like a real value",
       notesGibberish: "notes appear to contain gibberish — please describe what you see clearly",
+      challengeNeeded: "Please complete the human verification and submit again.",
+      invalidReporter: "Your name looks invalid. Please use a short real name or alias.",
+      invalidDistrict: "Please choose a valid Himachal district.",
+      invalidArea: "Please enter a valid area or locality.",
+      invalidSpecific: "Specific location is too long.",
+      invalidNotes: "Notes are too long.",
+      invalidCoordinates: "We could not verify the location. Please pin the spot again.",
+      invalidMapLink: "Please use a valid HTTPS Google Maps link.",
+      tooManyPhotos: "You can upload up to 6 photos only.",
+      uploadSessionExpired: "Your upload session expired. Please add the photos again.",
+      photoTooLarge: "One of the photos is too large after upload.",
+      invalidImageType: "Only JPG, PNG, and WEBP photos are allowed.",
+      invalidImageDimensions: "One photo has invalid dimensions.",
+      retrySubmit: "Please try submitting again.",
+      dailyLimitReached: "Too many reports came from this network today. Please try again tomorrow.",
     },
     labels: {
       reporterName: "reporter name",
@@ -2253,6 +2515,8 @@ const TRANSLATIONS = {
       submit: "रिपोर्ट भेजें",
       checkingPhotos: "फोटो जांची जा रही हैं…",
       uploading: "अपलोड हो रहा है…",
+      challengeCopy: "इस नेटवर्क से बहुत सारी रिपोर्टें आई हैं। आगे बढ़ने के लिए कृपया सत्यापन करें।",
+      challengeVerified: "सत्यापन पूरा हुआ। आगे बढ़ने के लिए फिर से सबमिट करें।",
       locating: "लोकेशन ली जा रही है…",
       digipin: "डिजीपिन",
       plusCode: "प्लस कोड",
@@ -2262,6 +2526,9 @@ const TRANSLATIONS = {
     success: {
       title: "पिन हो गया।",
       subtitle: "आपकी रिपोर्ट अब मैप पर दिख रही है।<br>देवभूमि को साफ रखें — इसे साझा करें।",
+      pendingTitle: "रिपोर्ट मिल गई।",
+      pendingSubtitle: "लाइव होने से पहले आपकी रिपोर्ट की समीक्षा होगी।<br>जो आपने देखा उसे दर्ज करने के लिए धन्यवाद।",
+      pendingNote: "यह रिपोर्ट एक छोटी सुरक्षा समीक्षा के बाद दिखाई देगी।",
       shareWhatsapp: "WhatsApp पर साझा करें",
       reportAnother: "एक और जगह रिपोर्ट करें",
       id: "आईडी: {{id}}",
@@ -2368,6 +2635,21 @@ const TRANSLATIONS = {
       textInappropriate: "{{label}} में अनुचित भाषा है",
       textUnreal: "{{label}} वास्तविक मान जैसा नहीं लगता",
       notesGibberish: "टिप्पणी में अस्पष्ट शब्द दिख रहे हैं — कृपया साफ़ लिखें",
+      challengeNeeded: "कृपया सत्यापन पूरा करें और फिर दोबारा सबमिट करें।",
+      invalidReporter: "कृपया छोटा और वास्तविक नाम या उपनाम लिखें।",
+      invalidDistrict: "कृपया हिमाचल का सही जिला चुनें।",
+      invalidArea: "कृपया सही क्षेत्र या मोहल्ला लिखें।",
+      invalidSpecific: "सटीक स्थान बहुत लंबा है।",
+      invalidNotes: "टिप्पणी बहुत लंबी है।",
+      invalidCoordinates: "लोकेशन सत्यापित नहीं हो सकी। कृपया फिर से पिन करें।",
+      invalidMapLink: "कृपया सही HTTPS Google Maps लिंक दें।",
+      tooManyPhotos: "आप अधिकतम 6 फोटो ही अपलोड कर सकते हैं।",
+      uploadSessionExpired: "अपलोड सत्र समाप्त हो गया। कृपया फोटो फिर से जोड़ें।",
+      photoTooLarge: "अपलोड के बाद एक फोटो बहुत बड़ी है।",
+      invalidImageType: "सिर्फ JPG, PNG और WEBP फोटो मान्य हैं।",
+      invalidImageDimensions: "एक फोटो का आकार मान्य नहीं है।",
+      retrySubmit: "कृपया फिर से कोशिश करें।",
+      dailyLimitReached: "आज इस नेटवर्क से बहुत रिपोर्टें आ चुकी हैं। कृपया कल फिर कोशिश करें।",
     },
     labels: {
       reporterName: "रिपोर्टर का नाम",
@@ -2552,6 +2834,10 @@ function applyStaticTranslations() {
   });
   const langBtn = document.getElementById("lang-toggle");
   if (langBtn) langBtn.textContent = currentLang === "en" ? "हिंदी" : "English";
+  const challengeCopy = document.getElementById("challenge-copy");
+  if (challengeCopy && !challengeToken) {
+    challengeCopy.textContent = challengeMessage || t("form.challengeCopy");
+  }
 }
 
 function applyLang() {

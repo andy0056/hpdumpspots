@@ -75,30 +75,28 @@ No accounts. No bureaucracy. Just evidence.
 
 ## How it's built
 
-No framework. No frontend bundler. The only build step is a tiny config generator.
+No frontend framework. The UI stays static, but abuse-sensitive writes now pass through small Vercel serverless functions.
 
 - `index.html` — all markup, page structure, script imports
 - `style.css` — all styles, design tokens, layout, components
 - `app.js` — all logic: map, list, form, upload, submit, spam checks, location encoding
-- `config.js` — credentials only, gitignored, never pushed
+- `config.js` — public client config only, gitignored, never pushed
 - `build.js` — Node script run at deploy time, generates `config.js` from env vars
+- `api/` — Vercel serverless functions for signed uploads, report submission, and moderation
+- `package.json` — minimal runtime dependency for serverless Supabase access
 - `vercel.json` — tells Vercel to run `node build.js` and serve the repo root
-- `favicon.svg` — fairy with a trash bag
-
-Everything loads from CDN. No npm, no bundler, no local install required.
 
 ---
 
 ## Running locally
 
 ```bash
+npm install
 node build.js
-python3 -m http.server 8080
-# or
-npx serve .
+vercel dev
 ```
 
-Open `http://localhost:8080`. Make sure `config.js` has your real credentials.
+Open the local Vercel URL. Make sure `config.js` has your real public credentials and your server env vars are available to Vercel dev.
 If you keep your Supabase values in `.env.local`, `node build.js` will read them and generate `config.js` for you.
 
 ---
@@ -110,8 +108,13 @@ If you keep your Supabase values in `.env.local`, `node build.js` will read them
 3. Set environment variables in Vercel → Project Settings → Environment Variables:
    - `DB_URL` or `NEXT_PUBLIC_SUPABASE_URL` — your database project URL
    - `DB_KEY` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` — your public Supabase key
+   - `SUPABASE_SERVICE_ROLE_KEY` — used only by the serverless functions
+   - `TURNSTILE_SITE_KEY` — public site key for abuse challenges
+   - `TURNSTILE_SECRET_KEY` — server-side Turnstile verification key
+   - `MODERATION_SECRET` — shared secret for the no-UI moderation endpoint
+   - `ABUSE_HASH_SALT` — optional dedicated salt for IP/device hashing
    - `LOCK_INSPECT_ENV` — `true` if you want the devtools lock on production
-4. In Supabase SQL Editor, run [supabase/setup.sql](/Users/anirudhthakur/Himachalpotholes/hpdumpspots/supabase/setup.sql) to create the required tables, policies, and storage bucket
+4. In Supabase SQL Editor, run [supabase/setup.sql](/Users/anirudhthakur/Himachalpotholes/hpdumpspots/supabase/setup.sql) to create the hardened tables, views, policies, moderation tables, and storage buckets
 5. Deploy — Vercel runs `node build.js`, generates `config.js`, and serves the app
 
 ---
@@ -122,10 +125,19 @@ Every report gets `DS-YYYYMMDD-HHMMSS-XXXX` — date, time, 4-char hex. Immutabl
 
 ---
 
+## Abuse hardening
+
+- Browser writes no longer go directly to `reports`, `report_photos`, or storage
+- Photos upload to a private quarantine bucket through signed upload URLs
+- Reports are validated and finalized on the server
+- Suspicious reports are stored as `pending` and hidden from the public feed
+- Public feed reads from a safe published-only view with masked reporter names
+
+---
+
 ## What's not built yet
 
-- No authentication — reporter name is a plain text field [not required at the moment]
-- No moderation dashboard or report flagging
+- No full moderation dashboard UI — use Supabase plus the moderation endpoint for v1
 - No map clustering for dense report areas
 - No editing or deleting reports after submit
 - No push notifications for new reports near a location

@@ -1,0 +1,12 @@
+{
+  "name": "onehimachal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OneHimachal civic reporting platform",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4"
+  }
+}

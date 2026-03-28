@@ -53,6 +53,7 @@ const env = {
     process.env.LOCK_INSPECT_ENV ??
     localEnv.LOCK_INSPECT_ENV ??
     "false",
+  TURNSTILE_SITE_KEY: pickEnv("TURNSTILE_SITE_KEY"),
 };
 
 const lockEnabled = String(env.LOCK_INSPECT_ENV).toLowerCase() === "true";
@@ -63,6 +64,7 @@ fs.writeFileSync(
     `const DB_URL = ${JSON.stringify(env.DB_URL)};`,
     `const DB_KEY = ${JSON.stringify(env.DB_KEY)};`,
     `const LOCK_INSPECT_ENV = ${lockEnabled};`,
+    `const TURNSTILE_SITE_KEY = ${JSON.stringify(env.TURNSTILE_SITE_KEY)};`,
     "",
   ].join("\n"),
 );
@@ -74,4 +76,6 @@ console.log(
   env.DB_KEY ? "SET" : "MISSING",
   "| LOCK:",
   lockEnabled ? "ON" : "OFF",
+  "| TURNSTILE:",
+  env.TURNSTILE_SITE_KEY ? "SET" : "OFF",
 );
